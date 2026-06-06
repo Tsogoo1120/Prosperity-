@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-Object -First 30)",
+      "Read(//c/Users/Administrator/OneDrive/Desktop/UnionV2-old/**)",
+      "Bash(not exist *)",
+      "Bash(git clone *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(find /c/Users/Administrator -maxdepth 5 -name \"*.js\" -path \"*UnionV2*\" 2>/dev/null | head -20; find /c/Users/Administrator -maxdepth 3 -type d -name \"UnionV2\" 2>/dev/null)",
+      "Read(//c/Users/Administrator/**)",
+      "Bash(curl -s \"https://api.github.com/repos/Tsogoo1120/UnionV2/git/trees/main?recursive=1\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(x['path']\\) for x in data.get\\('tree',[]\\) if 'video' in x['path'].lower\\(\\) or 'upload' in x['path'].lower\\(\\) or 'r2' in x['path'].lower\\(\\) or 'api' in x['path'].lower\\(\\)]\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/lib/r2/client.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/lib/r2/presign.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/lib/admin/client-uploads.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/supabase/migrations/00002_tables.sql\")",
+      "Bash(timeout 5 node index.js)",
+      "Bash(node index.js)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(kill %1)",
+      "Bash(cat /tmp/tree.json | grep -E '\"path\"' | grep -iE 'psych|test|assess')",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/app/actions/tests.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/lib/queries/tests.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/lib/types.ts\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Tsogoo1120/UnionV2/main/supabase/migrations/00004_rls.sql\")",
+      "Bash(npx vue-tsc *)"
+    ]
+  }
+}

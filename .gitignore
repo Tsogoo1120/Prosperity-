@@ -1,0 +1,15 @@
+node_modules
+*.mp4
+*.mov
+*.avi
+dist
+dist-ssr
+*.local
+.env
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.log
+
+.vite/

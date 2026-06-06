@@ -1,0 +1,8 @@
+# Supabase local project link (project ref: gtewmyhzpuwzmkdtgink)
+project_id = "gtewmyhzpuwzmkdtgink"
+
+[functions.get-video-url]
+verify_jwt = false
+
+[functions.upload-video]
+verify_jwt = false
