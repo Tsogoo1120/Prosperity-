@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient, type User } from 'https://esm.sh/@su
 export const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 export function json(body: unknown, status = 200): Response {

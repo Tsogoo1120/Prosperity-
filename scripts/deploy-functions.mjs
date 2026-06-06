@@ -32,6 +32,7 @@ run([
   'functions', 'deploy',
   'get-video-url', 'upload-video', 'send-email', 'subscription-expire', 'subscription-expiring',
   '--project-ref', projectRef,
+  '--no-verify-jwt',
 ])
 
 console.log('Edge functions deployed.')
