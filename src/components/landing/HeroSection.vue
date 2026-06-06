@@ -1,10 +1,7 @@
 <script setup>
-import { ref, computed } from "vue";
-import {
-  calDays,
-  calSlots,
-  formatBookingSummary,
-} from "@/data/booking-calendar.js";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { formatBookingSummary } from "@/data/booking-calendar.js";
+import { supabase } from "@/lib/supabase.js";
 
 import UiIcon from "@/components/common/UiIcon.vue";
 
@@ -21,6 +18,63 @@ const emit = defineEmits(["nav"]);
 const bookDate = ref(null);
 const bookSlot = ref(null);
 const pickerOpen = ref(false);
+
+const rawSlots = ref([]);
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const dayMap = computed(() => {
+  const map = {};
+  for (const s of rawSlots.value) {
+    const iso = s.start_at.slice(0, 10);
+    if (!map[iso]) {
+      const d = new Date(s.start_at);
+      map[iso] = { iso, d: DAY_NAMES[d.getDay()], n: d.getDate(), items: [] };
+    }
+    const d = new Date(s.start_at);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    map[iso].items.push({ id: s.id, time: `${hh}:${mm}` });
+  }
+  return map;
+});
+
+const availDays = computed(() => Object.values(dayMap.value));
+
+const currentSlotTimes = computed(() => {
+  if (!bookDate.value?.iso) return [];
+  return dayMap.value[bookDate.value.iso]?.items.map((i) => i.time) ?? [];
+});
+
+async function loadAvailableSlots() {
+  const now = new Date().toISOString();
+  const { data } = await supabase
+    .from('coaching_slots')
+    .select('id, start_at, end_at, service_type')
+    .eq('status', 'available')
+    .is('user_id', null)
+    .gte('start_at', now)
+    .order('start_at', { ascending: true });
+  rawSlots.value = data ?? [];
+}
+
+watch(availDays, (days) => {
+  if (days.length && !bookDate.value) bookDate.value = days[0];
+});
+
+let realtimeChannel = null;
+
+onMounted(() => {
+  loadAvailableSlots();
+  realtimeChannel = supabase
+    .channel('hero-available-slots')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, loadAvailableSlots)
+    .subscribe();
+});
+
+onUnmounted(() => {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+});
 
 const bookingSummary = computed(() =>
   formatBookingSummary(bookDate.value, bookSlot.value),
@@ -60,8 +114,6 @@ function onPrimaryClick() {
   }
   goEnrollPayment();
 }
-
-
 </script>
 
 <template>
@@ -157,24 +209,25 @@ function onPrimaryClick() {
           </div>
 
           <p class="kicker cool" style="margin-bottom: 12px">Өдөр сонгох</p>
-          <div class="hero-booking-days">
+          <div v-if="availDays.length" class="hero-booking-days">
             <button
-              v-for="day in calDays.filter((d) => !d.unavail)"
-              :key="day.n"
+              v-for="day in availDays"
+              :key="day.iso"
               type="button"
               class="hero-booking-day"
-              :class="{ 'is-selected': bookDate?.n === day.n }"
-              @click="bookDate = day"
+              :class="{ 'is-selected': bookDate?.iso === day.iso }"
+              @click="bookDate = day; bookSlot = null"
             >
               <span class="hero-booking-day__abbr">{{ day.d }}</span>
               <span class="hero-booking-day__num">{{ day.n }}</span>
             </button>
           </div>
+          <p v-else class="muted" style="font-size: 13px; margin-bottom: 18px">Одоогоор боломжит цаг байхгүй байна.</p>
 
           <p class="kicker cool" style="margin: 18px 0 12px">Боломжит цаг</p>
-          <div class="hero-booking-slots">
+          <div v-if="currentSlotTimes.length" class="hero-booking-slots">
             <button
-              v-for="slot in calSlots"
+              v-for="slot in currentSlotTimes"
               :key="slot"
               type="button"
               class="hero-booking-slot"
@@ -184,6 +237,7 @@ function onPrimaryClick() {
               {{ slot }}
             </button>
           </div>
+          <p v-else-if="bookDate" class="muted" style="font-size: 13px">Энэ өдөрт боломжит цаг байхгүй.</p>
 
           <div class="hero-picker__actions">
             <button
