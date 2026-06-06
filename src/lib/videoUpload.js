@@ -49,38 +49,23 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
 }
 
 export async function getPresignDownloadUrl(lessonId, token, variant = 'desktop') {
-  const useDevApi = import.meta.env.DEV
   // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00b137'},body:JSON.stringify({sessionId:'00b137',location:'videoUpload.js:getPresignDownloadUrl:entry',message:'Resolving video URL',data:{lessonId,variant,hasToken:!!token,useDevApi},timestamp:Date.now(),hypothesisId:'A,F'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0e9bf'},body:JSON.stringify({sessionId:'f0e9bf',location:'videoUpload.js:getPresignDownloadUrl:entry',message:'Fetching presigned URL via same-origin API',data:{lessonId,variant,hasToken:!!token,apiPath:'/api/get-video-url'},timestamp:Date.now(),hypothesisId:'A,D'})}).catch(()=>{});
   // #endregion
-
-  if (useDevApi) {
-    const res = await fetch('/api/get-video-url', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ lessonId, variant }),
-    })
-    let data = null
-    try { data = await res.json() } catch { /* empty */ }
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00b137'},body:JSON.stringify({sessionId:'00b137',location:'videoUpload.js:getPresignDownloadUrl:devResult',message:'Dev API response',data:{status:res.status,ok:res.ok,dataError:data?.error??null,hasUrl:!!data?.url},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    if (!res.ok) return { error: data?.error ?? `HTTP ${res.status}` }
-    return { url: data?.url ?? null }
-  }
-
-  const { data, error } = await supabase.functions.invoke('get-video-url', {
-    body: { lessonId, variant },
-    headers: { Authorization: `Bearer ${token}` },
+  const res = await fetch('/api/get-video-url', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ lessonId, variant }),
   })
+  let data = null
+  try { data = await res.json() } catch { /* empty */ }
   // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00b137'},body:JSON.stringify({sessionId:'00b137',location:'videoUpload.js:getPresignDownloadUrl:edgeResult',message:'Edge function response',data:{hasError:!!error,errorMessage:error?.message??null,dataError:data?.error??null,hasUrl:!!data?.url},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0e9bf'},body:JSON.stringify({sessionId:'f0e9bf',location:'videoUpload.js:getPresignDownloadUrl:result',message:'API response received',data:{status:res.status,ok:res.ok,dataError:data?.error??null,hasUrl:!!data?.url},timestamp:Date.now(),hypothesisId:'D,E'})}).catch(()=>{});
   // #endregion
-  if (error) return { error: data?.error ?? error.message }
-  if (data?.error) return { error: data.error }
+  if (!res.ok) return { error: data?.error ?? `HTTP ${res.status}` }
   return { url: data?.url ?? null }
 }
 
