@@ -2,21 +2,15 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import CalmField from '@/components/common/CalmField.vue'
-import { useAuth } from '@/composables/useAuth.js'
-import { getPresignDownloadUrl, getThumbnailUrl } from '@/lib/videoUpload.js'
+import { getThumbnailUrl } from '@/lib/videoUpload.js'
+
+const CDN_BASE = 'https://cdn.tsogoo.site'
 
 const props = defineProps({
   lesson: { type: Object, required: true },
   playing: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:playing'])
-
-const { session } = useAuth()
-
-// ── presigned URL resolution ───────────────────────────────────────
-const resolvedUrl = ref(null)
-const urlLoading = ref(false)
-const urlError = ref(null)
 
 const screenWidth = ref(window.innerWidth)
 function updateScreenWidth() {
@@ -38,32 +32,12 @@ function isR2Key(k) {
   return !!k && !k.startsWith('http://') && !k.startsWith('https://')
 }
 
-async function fetchPresignedUrl() {
+const resolvedUrl = computed(() => {
   const key = rawKey.value
-  resolvedUrl.value = null
-  urlError.value = null
-  if (!key) return
-
-  if (!isR2Key(key)) {
-    resolvedUrl.value = key
-    return
-  }
-
-  const token = session.value?.access_token
-  if (!token) { urlError.value = 'not_authenticated'; return }
-
-  urlLoading.value = true
-  const result = await getPresignDownloadUrl(props.lesson.id, token, useVertical.value ? 'vertical' : 'desktop')
-  urlLoading.value = false
-
-  if (result.error) {
-    urlError.value = result.error
-  } else {
-    resolvedUrl.value = result.url
-  }
-}
-
-watch([() => props.lesson?.id, useVertical], fetchPresignedUrl, { immediate: true })
+  if (!key) return null
+  if (!isR2Key(key)) return key
+  return `${CDN_BASE}/${key}`
+})
 
 // ── YouTube helpers ────────────────────────────────────────────────
 function youtubeId(url) {
@@ -112,33 +86,8 @@ function toggle() { emit('update:playing', !props.playing) }
 </script>
 
 <template>
-  <!-- ── Loading ── -->
-  <div
-    v-if="urlLoading"
-    style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: var(--surface-2); display: flex; align-items: center; justify-content: center"
-  >
-    <UiIcon name="clock" :size="28" style="opacity: 0.35" />
-  </div>
-
-  <!-- ── Subscription required ── -->
-  <div
-    v-else-if="urlError === 'subscription_required'"
-    style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px"
-  >
-    <UiIcon name="lock" :size="32" style="opacity: 0.4" />
-    <p style="font-size: 14px; color: var(--muted); text-align: center">Энэ хичээлийг үзэхэд идэвхтэй захиалга шаардлагатай.</p>
-  </div>
-
-  <!-- ── Error ── -->
-  <div
-    v-else-if="urlError"
-    style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: var(--surface-2); display: flex; align-items: center; justify-content: center"
-  >
-    <p style="font-size: 14px; color: var(--bad); text-align: center; padding: 20px">Видео ачааллахад алдаа гарлаа.</p>
-  </div>
-
   <!-- ── YouTube embed ── -->
-  <div v-else-if="isYoutube" style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: #000">
+  <div v-if="isYoutube" style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: #000">
     <iframe
       :src="embedUrl"
       style="width: 100%; height: 100%; border: none; display: block"
@@ -147,12 +96,13 @@ function toggle() { emit('update:playing', !props.playing) }
     />
   </div>
 
-  <!-- ── Native video (R2 presigned or direct MP4) ── -->
+  <!-- ── Native video (CDN or direct MP4) ── -->
   <div v-else-if="resolvedUrl" style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: #000">
     <video
       :src="resolvedUrl"
       :poster="posterUrl ?? undefined"
       controls
+      preload="auto"
       style="width: 100%; height: 100%; display: block; object-fit: contain"
     />
   </div>

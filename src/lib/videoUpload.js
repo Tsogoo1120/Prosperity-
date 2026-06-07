@@ -6,11 +6,7 @@ const INTRO_BUCKET = 'media-public'
 export function getThumbnailUrl(path) {
   if (!path) return null
   const { data } = supabase.storage.from(THUMBNAILS_BUCKET).getPublicUrl(path)
-  const publicUrl = data?.publicUrl ?? null
-  // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5414d7'},body:JSON.stringify({sessionId:'5414d7',location:'videoUpload.js:getThumbnailUrl',message:'Built thumbnail public URL',data:{path,bucket:THUMBNAILS_BUCKET,publicUrl},timestamp:Date.now(),hypothesisId:'H3,H4'})}).catch(()=>{});
-  // #endregion
-  return publicUrl
+  return data?.publicUrl ?? null
 }
 
 export function getIntroVideoPublicUrl(path) {
@@ -22,29 +18,10 @@ export function getIntroVideoPublicUrl(path) {
 export async function uploadThumbnailToStorage(file, slug) {
   const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
   const path = `${slug}-${Date.now()}.${ext}`
-  // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5414d7'},body:JSON.stringify({sessionId:'5414d7',location:'videoUpload.js:thumbUploadStart',message:'Starting thumbnail upload',data:{slug,path,ext,fileType:file.type,fileSize:file.size,fileName:file.name},timestamp:Date.now(),hypothesisId:'H1,H2,H3'})}).catch(()=>{});
-  // #endregion
-  const { data: uploadData, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from(THUMBNAILS_BUCKET)
     .upload(path, file, { contentType: file.type, upsert: true })
-  // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5414d7'},body:JSON.stringify({sessionId:'5414d7',location:'videoUpload.js:thumbUploadResult',message:'Thumbnail upload response',data:{path,hasError:!!error,errorMsg:error?.message,errorStatus:error?.statusCode,uploadedPath:uploadData?.path,fullPath:uploadData?.fullPath},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-  // #endregion
   if (error) return { error: error.message }
-  const publicUrl = getThumbnailUrl(path)
-  if (publicUrl) {
-    try {
-      const probe = await fetch(publicUrl, { method: 'HEAD' })
-      // #region agent log
-      fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5414d7'},body:JSON.stringify({sessionId:'5414d7',location:'videoUpload.js:thumbProbe',message:'HEAD probe on uploaded thumbnail',data:{path,publicUrl,status:probe.status,ok:probe.ok,contentType:probe.headers.get('content-type')},timestamp:Date.now(),hypothesisId:'H2,H5'})}).catch(()=>{});
-      // #endregion
-    } catch (probeErr) {
-      // #region agent log
-      fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5414d7'},body:JSON.stringify({sessionId:'5414d7',location:'videoUpload.js:thumbProbeError',message:'HEAD probe threw',data:{path,publicUrl,errorMessage:probeErr?.message},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
-    }
-  }
   return { path }
 }
 
@@ -68,41 +45,23 @@ function inferVideoContentType(file) {
 export async function uploadVideoToR2(file, _bucket, variant, token) {
   const contentType = inferVideoContentType(file)
 
-  // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b8d68b'},body:JSON.stringify({sessionId:'b8d68b',location:'videoUpload.js:presignStart',message:'Starting presign request',data:{variant,contentType,fileName:file.name,fileSize:file.size,hasToken:!!token},timestamp:Date.now(),hypothesisId:'B,C,E'})}).catch(()=>{});
-  // #endregion
-
-  // Step 1: get presigned PUT URL from edge function (small JSON request, no file transfer)
   const { data, error } = await supabase.functions.invoke('upload-video', {
     body: { filename: file.name, contentType, variant },
     headers: { Authorization: `Bearer ${token}` },
   })
 
-  // #region agent log
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b8d68b'},body:JSON.stringify({sessionId:'b8d68b',location:'videoUpload.js:presignResult',message:'Presign response',data:{hasError:!!error,errorMsg:error?.message,dataError:data?.error,hasUploadUrl:!!data?.uploadUrl,hasKey:!!data?.key},timestamp:Date.now(),hypothesisId:'B,C,E'})}).catch(()=>{});
-  // #endregion
-
   if (error) return { error: data?.error ?? error.message }
   if (data?.error) return { error: data.error }
   if (!data?.uploadUrl || !data?.key) return { error: 'presign_failed' }
 
-  // Step 2: upload file directly to R2 using the presigned URL (no size limit)
   try {
     const res = await fetch(data.uploadUrl, {
       method: 'PUT',
       body: file,
       headers: { 'Content-Type': contentType },
     })
-
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b8d68b'},body:JSON.stringify({sessionId:'b8d68b',location:'videoUpload.js:r2PutResult',message:'R2 PUT response',data:{status:res.status,ok:res.ok,variant},timestamp:Date.now(),hypothesisId:'A,D'})}).catch(()=>{});
-    // #endregion
-
     if (!res.ok) return { error: `R2 upload failed: ${res.status}` }
   } catch (err) {
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b8d68b'},body:JSON.stringify({sessionId:'b8d68b',location:'videoUpload.js:r2PutError',message:'R2 PUT threw',data:{errorName:err?.name,errorMessage:err?.message,variant},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     return { error: err?.message ?? 'R2 upload failed' }
   }
 
