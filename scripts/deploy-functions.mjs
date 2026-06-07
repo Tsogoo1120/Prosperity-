@@ -12,6 +12,7 @@ const env = Object.fromEntries(
 )
 
 const projectRef = 'gtewmyhzpuwzmkdtgink'
+
 const secretArgs = [
   'secrets', 'set',
   `R2_ACCOUNT_ID=${env.R2_ACCOUNT_ID}`,
@@ -23,7 +24,15 @@ const secretArgs = [
 ]
 
 function run(args) {
-  const r = spawnSync('npx', ['supabase', ...args], { stdio: 'inherit', shell: true })
+  const childEnv = { ...process.env }
+  if (env.SUPABASE_ACCESS_TOKEN) {
+    childEnv.SUPABASE_ACCESS_TOKEN = env.SUPABASE_ACCESS_TOKEN
+  }
+  const r = spawnSync('npx', ['supabase', ...args], {
+    stdio: 'inherit',
+    shell: true,
+    env: childEnv,
+  })
   if (r.status !== 0) process.exit(r.status ?? 1)
 }
 

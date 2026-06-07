@@ -1,5 +1,5 @@
 import { CORS, json, requireUser } from '../_shared/auth.ts'
-import { generateR2Key, putObject } from '../_shared/r2.ts'
+import { generateR2Key, presignUpload } from '../_shared/r2.ts'
 
 const ALLOWED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
 
@@ -21,31 +21,26 @@ Deno.serve(async (req) => {
     return json({ error: 'forbidden' }, 403)
   }
 
-  let form: FormData
+  let body: { filename?: string; contentType?: string; variant?: string }
   try {
-    form = await req.formData()
+    body = await req.json()
   } catch {
     return json({ error: 'bad_request' }, 400)
   }
 
-  const file = form.get('file')
-  const variant = String(form.get('variant') ?? 'desktop')
-  if (!(file instanceof File)) return json({ error: 'missing_file' }, 400)
+  const { filename, contentType = 'video/mp4', variant = 'desktop' } = body
+
+  if (!filename) return json({ error: 'missing_filename' }, 400)
   if (!['desktop', 'vertical'].includes(variant)) return json({ error: 'invalid_variant' }, 400)
+  if (!ALLOWED_TYPES.has(contentType)) return json({ error: 'invalid_content_type' }, 400)
 
-  const contentType = file.type || 'video/mp4'
-  if (!ALLOWED_TYPES.has(contentType)) {
-    return json({ error: 'invalid_content_type' }, 400)
-  }
-
-  const key = generateR2Key('video-lessons', file.name)
+  const key = generateR2Key('video-lessons', filename)
 
   try {
-    const body = new Uint8Array(await file.arrayBuffer())
-    await putObject(key, body, contentType)
-    return json({ key })
+    const uploadUrl = await presignUpload(key, contentType)
+    return json({ key, uploadUrl })
   } catch (err) {
-    console.error('[upload-video] upload failed:', err)
-    return json({ error: 'upload_failed' }, 500)
+    console.error('[upload-video] presign failed:', err)
+    return json({ error: 'presign_failed' }, 500)
   }
 })
