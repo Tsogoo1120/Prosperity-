@@ -1,5 +1,5 @@
 import { CORS, json, requireUser } from '../_shared/auth.ts'
-import { generateR2Key, presignUpload } from '../_shared/r2.ts'
+import { generateR2Key, presignUpload, VIDEO_CACHE_CONTROL } from '../_shared/r2.ts'
 
 const ALLOWED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
 
@@ -37,8 +37,8 @@ Deno.serve(async (req) => {
   const key = generateR2Key('video-lessons', filename)
 
   try {
-    const uploadUrl = await presignUpload(key, contentType)
-    return json({ key, uploadUrl })
+    const uploadUrl = await presignUpload(key, contentType, VIDEO_CACHE_CONTROL)
+    return json({ key, uploadUrl, cacheControl: VIDEO_CACHE_CONTROL })
   } catch (err) {
     console.error('[upload-video] presign failed:', err)
     return json({ error: 'presign_failed' }, 500)

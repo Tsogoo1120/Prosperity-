@@ -314,6 +314,7 @@ export function coachingApprovedTemplate(opts: {
   slotStartAt: string
   slotEndAt: string
   adminNote: string | null
+  meetLink?: string | null
 }): EmailTemplate {
   const greeting = greet(opts.fullName)
   const startHuman = formatMongolianDateTime(opts.slotStartAt)
@@ -321,6 +322,17 @@ export function coachingApprovedTemplate(opts: {
   const noteBlock = opts.adminNote
     ? `<p style="margin:0 0 16px;color:#5c564d;"><strong>Админы тэмдэглэл:</strong><br /><span style="white-space:pre-wrap;">${escapeHtml(opts.adminNote)}</span></p>`
     : ''
+  const meetBlock = opts.meetLink
+    ? `<p style="margin:0 0 16px;color:#5c564d;">
+         <strong>Google Meet линк:</strong><br />
+         <a href="${opts.meetLink}" style="color:#e84a1f;word-break:break-all;">${opts.meetLink}</a>
+       </p>`
+    : `<p style="margin:0 0 16px;color:#5c564d;">
+         Эсвэл та өөрөө <strong>Tsogoo_1120</strong> инста хаяглуу бичээд шууд ярьж болно.
+       </p>`
+  const meetText = opts.meetLink
+    ? `Google Meet линк: ${opts.meetLink}\n`
+    : `Асуулт байвал Tsogoo_1120 инста хаяглуу бичнэ үү.\n`
 
   return {
     subject: 'Таны цаг баталгаажлаа',
@@ -331,15 +343,13 @@ export function coachingApprovedTemplate(opts: {
         <p style="margin:0 0 16px;color:#5c564d;">
           Таны цаг баталгаажлаа.<br />Хуваарь: <strong>${startHuman}</strong> – ${endHuman}
         </p>
-        <p style="margin:0 0 16px;color:#5c564d;">
-          Бүртгүүлсэн email хаяг луу нь Google Meet линк явуулах болно. Эсвэл та өөрөө <strong>Tsogoo_1120</strong> миний инста хаяглуу бичээд шууд ярьж болно.
-        </p>
+        ${meetBlock}
         ${noteBlock}`,
       ctaLabel: 'Хяналтын самбар руу орох',
       ctaHref: opts.siteUrl,
     }),
     text:
-      `${greeting}\n\nТаны цаг баталгаажлаа.\nХуваарь: ${startHuman} – ${endHuman}\n\nБүртгүүлсэн email хаяг луу нь Google Meet линк явуулах болно.\nЭсвэл та өөрөө Tsogoo_1120 миний инста хаяглуу бичээд шууд ярьж болно.\n\n${opts.adminNote ? `Тэмдэглэл:\n${opts.adminNote}\n\n` : ''}— Union`,
+      `${greeting}\n\nТаны цаг баталгаажлаа.\nХуваарь: ${startHuman} – ${endHuman}\n\n${meetText}\n${opts.adminNote ? `Тэмдэглэл:\n${opts.adminNote}\n\n` : ''}— Union`,
   }
 }
 

@@ -6,11 +6,14 @@ import UiIcon from '@/components/common/UiIcon.vue'
 import {
   uploadThumbnailToStorage,
   uploadVideoToR2,
+  uploadVideoToCloudflareStream,
   readVideoDuration,
   getThumbnailUrl,
   uploadIntroVideoToStorage,
   getIntroVideoPublicUrl,
 } from '@/lib/videoUpload.js'
+
+const STREAM_ENABLED = !!import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
 
 const { session } = useAuth()
 
@@ -96,6 +99,8 @@ const blank = () => ({
   duration_seconds: '',
   video_r2_key: '',
   video_r2_key_vertical: '',
+  video_stream_uid: '',
+  video_stream_uid_vertical: '',
   thumbnail_path: '',
   _orig_published_at: null,
 })
@@ -112,7 +117,7 @@ async function load() {
   loading.value = true
   const { data } = await supabase
     .from('video_lessons')
-    .select('id, slug, title, description, category, thumbnail_path, video_r2_key, video_r2_key_vertical, duration_seconds, sort_order, is_published, published_at')
+    .select('id, slug, title, description, category, thumbnail_path, video_r2_key, video_r2_key_vertical, video_stream_uid, video_stream_uid_vertical, duration_seconds, sort_order, is_published, published_at')
     .order('sort_order', { ascending: true })
   list.value = data ?? []
   loading.value = false
@@ -160,6 +165,8 @@ function startEdit(v) {
     duration_seconds: v.duration_seconds ?? '',
     video_r2_key: v.video_r2_key ?? '',
     video_r2_key_vertical: v.video_r2_key_vertical ?? '',
+    video_stream_uid: v.video_stream_uid ?? '',
+    video_stream_uid_vertical: v.video_stream_uid_vertical ?? '',
     thumbnail_path: v.thumbnail_path ?? '',
     _orig_published_at: v.published_at ?? null,
   }
@@ -223,6 +230,8 @@ async function save() {
   let thumbnailPath = form.value.thumbnail_path || null
   let desktopKey = form.value.video_r2_key || null
   let verticalKey = form.value.video_r2_key_vertical || null
+  let desktopStreamUid = form.value.video_stream_uid || null
+  let verticalStreamUid = form.value.video_stream_uid_vertical || null
 
   if (thumbFile.value) {
     uploadStatus.value = 'Thumbnail байршуулж байна…'
@@ -232,22 +241,42 @@ async function save() {
   }
 
   if (desktopFile.value) {
-    uploadStatus.value = 'Desktop видео байршуулж байна…'
-    const r = await uploadVideoToR2(desktopFile.value, 'video-lessons', 'desktop', token)
-    if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
-    desktopKey = r.key
+    if (STREAM_ENABLED) {
+      uploadStatus.value = 'Desktop видео Cloudflare Stream руу байршуулж байна… 0%'
+      const r = await uploadVideoToCloudflareStream(desktopFile.value, 'desktop', token, (p) => {
+        uploadStatus.value = `Desktop видео Cloudflare Stream руу байршуулж байна… ${Math.round(p * 100)}%`
+      })
+      if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
+      desktopStreamUid = r.uid
+      desktopKey = null
+    } else {
+      uploadStatus.value = 'Desktop видео байршуулж байна…'
+      const r = await uploadVideoToR2(desktopFile.value, 'video-lessons', 'desktop', token)
+      if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
+      desktopKey = r.key
+    }
   }
 
   if (verticalFile.value) {
-    uploadStatus.value = 'Босоо видео байршуулж байна…'
-    const r = await uploadVideoToR2(verticalFile.value, 'video-lessons', 'vertical', token)
-    if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
-    verticalKey = r.key
+    if (STREAM_ENABLED) {
+      uploadStatus.value = 'Босоо видео Cloudflare Stream руу байршуулж байна… 0%'
+      const r = await uploadVideoToCloudflareStream(verticalFile.value, 'vertical', token, (p) => {
+        uploadStatus.value = `Босоо видео Cloudflare Stream руу байршуулж байна… ${Math.round(p * 100)}%`
+      })
+      if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
+      verticalStreamUid = r.uid
+      verticalKey = null
+    } else {
+      uploadStatus.value = 'Босоо видео байршуулж байна…'
+      const r = await uploadVideoToR2(verticalFile.value, 'video-lessons', 'vertical', token)
+      if (r.error) { formError.value = r.error; saving.value = false; uploadStatus.value = ''; return }
+      verticalKey = r.key
+    }
   }
 
   uploadStatus.value = ''
 
-  if (!desktopKey) {
+  if (!desktopKey && !desktopStreamUid) {
     formError.value = 'Видео байршуулах шаардлагатай'
     saving.value = false
     return
@@ -265,6 +294,8 @@ async function save() {
     thumbnail_path: thumbnailPath,
     video_r2_key: desktopKey,
     video_r2_key_vertical: verticalKey,
+    video_stream_uid: desktopStreamUid,
+    video_stream_uid_vertical: verticalStreamUid,
     duration_seconds: form.value.duration_seconds ? Number(form.value.duration_seconds) : null,
     sort_order: Number(form.value.sort_order) || 0,
     is_published: form.value.is_published,

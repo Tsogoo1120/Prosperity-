@@ -20,8 +20,11 @@ const secretArgs = [
   `R2_SECRET_ACCESS_KEY=${env.R2_SECRET_ACCESS_KEY}`,
   `R2_BUCKET=${env.R2_BUCKET}`,
   `R2_ENDPOINT=${env.R2_ENDPOINT}`,
-  '--project-ref', projectRef,
 ]
+if (env.CLOUDFLARE_API_TOKEN) secretArgs.push(`CLOUDFLARE_API_TOKEN=${env.CLOUDFLARE_API_TOKEN}`)
+if (env.CLOUDFLARE_ACCOUNT_ID) secretArgs.push(`CLOUDFLARE_ACCOUNT_ID=${env.CLOUDFLARE_ACCOUNT_ID}`)
+if (env.CLOUDFLARE_STREAM_CUSTOMER_CODE) secretArgs.push(`CLOUDFLARE_STREAM_CUSTOMER_CODE=${env.CLOUDFLARE_STREAM_CUSTOMER_CODE}`)
+secretArgs.push('--project-ref', projectRef)
 
 function run(args) {
   const childEnv = { ...process.env }
@@ -39,7 +42,7 @@ function run(args) {
 run(secretArgs)
 run([
   'functions', 'deploy',
-  'get-video-url', 'upload-video', 'send-email', 'subscription-expire', 'subscription-expiring',
+  'get-video-url', 'upload-video', 'stream-upload-url', 'send-email', 'subscription-expire', 'subscription-expiring',
   '--project-ref', projectRef,
   '--no-verify-jwt',
 ])

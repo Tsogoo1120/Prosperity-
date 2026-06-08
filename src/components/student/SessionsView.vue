@@ -10,6 +10,7 @@ const { session } = useAuth()
 
 const upcoming = ref([])
 const past = ref([])
+const availSlots = ref([])
 
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -51,13 +52,29 @@ async function loadSessions() {
     }))
 }
 
+async function loadAvailableSlots() {
+  const now = new Date().toISOString()
+  const { data } = await supabase
+    .from('coaching_slots')
+    .select('id, start_at, end_at, service_type')
+    .eq('status', 'available')
+    .is('user_id', null)
+    .gte('start_at', now)
+    .order('start_at', { ascending: true })
+    .limit(8)
+  availSlots.value = data ?? []
+}
+
 let realtimeChannel = null
 
 onMounted(async () => {
-  await loadSessions()
+  await Promise.all([loadSessions(), loadAvailableSlots()])
   realtimeChannel = supabase
     .channel('user-sessions')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, loadSessions)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, () => {
+      loadSessions()
+      loadAvailableSlots()
+    })
     .subscribe()
 })
 
@@ -80,6 +97,28 @@ onUnmounted(() => {
           <p class="muted" style="font-size: 14px; margin-top: 3px">Онлайн уулзалт цаг товлох.</p>
         </div>
         <button class="btn btn-primary btn-block sm:btn-block" style="width: 100%; max-width: 100%" @click="emit('book')"><UiIcon name="calendar" :size="17" /> Book a session</button>
+      </div>
+
+      <!-- Available slots from admin -->
+      <div style="margin-bottom: 32px">
+        <h3 style="font-size: 17px; margin-bottom: 14px">Боломжит цагууд</h3>
+        <div v-if="availSlots.length" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px">
+          <button
+            v-for="s in availSlots"
+            :key="s.id"
+            class="card"
+            style="text-align: left; padding: 14px 16px; border-radius: 12px; cursor: pointer; border-left: 4px solid var(--sage); background: var(--card); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line)"
+            @click="emit('book')"
+          >
+            <div style="font-weight: 600; font-size: 14px; color: var(--sage-deep); margin-bottom: 4px">
+              {{ serviceLabel(s.service_type) }}
+            </div>
+            <div class="muted" style="font-size: 13px">
+              {{ fmtDate(s.start_at) }} · {{ fmtTime(s.start_at) }}
+            </div>
+          </button>
+        </div>
+        <div v-else class="muted" style="font-size: 14px; padding: 8px 0">Одоогоор нээлттэй цаг байхгүй байна.</div>
       </div>
 
       <h3 style="font-size: 17px; margin-bottom: 14px">Upcoming</h3>

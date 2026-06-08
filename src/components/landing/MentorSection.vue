@@ -1,11 +1,37 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import { instructor } from '@/data/union.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import ImageSlot from '@/components/common/ImageSlot.vue'
 import tarotImg from '../../../imgs.video/tarot.jpg'
+import { supabase } from '@/lib/supabase.js'
 
 const emit = defineEmits(['book'])
 const m = instructor
+
+const availSlots = ref([])
+
+function fmtSlotLabel(s) {
+  const d = new Date(s.start_at)
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const type = s.service_type === 'tarot_reading' ? 'Тарот' : 'Coaching'
+  return `${date} · ${hh}:${mm} (${type})`
+}
+
+onMounted(async () => {
+  const now = new Date().toISOString()
+  const { data } = await supabase
+    .from('coaching_slots')
+    .select('id, start_at, service_type')
+    .eq('status', 'available')
+    .is('user_id', null)
+    .gte('start_at', now)
+    .order('start_at', { ascending: true })
+    .limit(6)
+  availSlots.value = data ?? []
+})
 </script>
 
 <template>
@@ -37,6 +63,22 @@ const m = instructor
             <span style="color: var(--sage-deep)"><UiIcon name="checkCircle" :size="19" /></span>{{ c }}
           </div>
         </div>
+        <!-- Available slots preview -->
+        <div style="margin-bottom: 22px">
+          <div class="kicker sage" style="margin-bottom: 10px">Боломжит цагууд</div>
+          <div v-if="availSlots.length" style="display: flex; flex-wrap: wrap; gap: 8px">
+            <span
+              v-for="s in availSlots"
+              :key="s.id"
+              style="padding: 7px 13px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer"
+              @click="emit('book')"
+            >
+              {{ fmtSlotLabel(s) }}
+            </span>
+          </div>
+          <p v-else class="muted" style="font-size: 13.5px">Одоогоор нээлттэй цаг байхгүй байна.</p>
+        </div>
+
         <button class="btn btn-blue btn-lg btn-block" @click="emit('book')">
           <UiIcon name="calendar" :size="18" /> Надтай уулзалтын цаг товлох
         </button>

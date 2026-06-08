@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
+import ImageSlot from '@/components/common/ImageSlot.vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 
@@ -12,12 +13,18 @@ const emit = defineEmits(['close'])
 
 const { session } = useAuth()
 
+// step 0 = pick slot + topic, step 1 = payment upload, step 2 = success
 const step = ref(0)
 const bookDate = ref(null)
-const bookSlot = ref(null) // { id, time }
+const bookSlot = ref(null)
 const topic = ref('')
 const bookingErr = ref('')
 const rawSlots = ref([])
+
+// payment upload state
+const receiptFile = ref(null)
+const uploading = ref(false)
+const uploadErr = ref('')
 
 async function loadAvailableSlots() {
   const now = new Date().toISOString()
@@ -63,7 +70,9 @@ watch(
       step.value = 0
       bookSlot.value = null
       bookingErr.value = ''
+      uploadErr.value = ''
       topic.value = ''
+      receiptFile.value = null
       bookDate.value = availDays.value[0] ?? null
       loadAvailableSlots()
     }
@@ -86,7 +95,8 @@ function subscribeRealtime() {
 onMounted(() => { loadAvailableSlots(); subscribeRealtime() })
 onUnmounted(() => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) })
 
-async function confirmBooking() {
+// Step 0 → 1: validate selection, do NOT touch DB yet
+function confirmBooking() {
   if (!bookDate.value || !bookSlot.value) return
   bookingErr.value = ''
   const userId = session.value?.user?.id
@@ -94,22 +104,51 @@ async function confirmBooking() {
     bookingErr.value = 'Нэвтэрч орно уу.'
     return
   }
-  const { error } = await supabase
-    .from('coaching_slots')
-    .update({ status: 'pending', user_id: userId, description: topic.value || null })
-    .eq('id', bookSlot.value.id)
-    .eq('status', 'available')
-  if (error) {
-    bookingErr.value = 'Захиалга хадгалахад алдаа гарлаа. Дахин оролдоно уу.'
+  step.value = 1
+}
+
+// Step 1 → 2: upload receipt then claim the slot
+async function submitPayment() {
+  uploadErr.value = ''
+  const userId = session.value?.user?.id
+  if (!userId) { uploadErr.value = 'Нэвтэрч орно уу.'; return }
+  if (!receiptFile.value) { uploadErr.value = 'Баримтын зурагийг хавсаргана уу.'; return }
+
+  uploading.value = true
+
+  const file = receiptFile.value
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+  const path = `${userId}/${Date.now()}-${crypto.randomUUID()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('payment-screenshots')
+    .upload(path, file, { contentType: file.type, upsert: false })
+
+  if (uploadError) {
+    uploadErr.value = 'Баримт илгээхэд алдаа: ' + uploadError.message
+    uploading.value = false
     return
   }
-  sessionStorage.setItem(
-    'union-booking-prefill',
-    JSON.stringify({
-      bookDate: { d: bookDate.value.d, n: bookDate.value.n },
-      bookSlot: bookSlot.value.time,
-    }),
-  )
+
+  const { error } = await supabase
+    .from('coaching_slots')
+    .update({
+      status: 'pending',
+      user_id: userId,
+      description: topic.value || null,
+      payment_screenshot_path: path,
+    })
+    .eq('id', bookSlot.value.id)
+    .eq('status', 'available')
+
+  if (error) {
+    await supabase.storage.from('payment-screenshots').remove([path])
+    uploadErr.value = 'Захиалга хадгалахад алдаа. Дахин оролдоно уу.'
+    uploading.value = false
+    return
+  }
+
+  uploading.value = false
   step.value = 2
 }
 </script>
@@ -122,6 +161,7 @@ async function confirmBooking() {
       style="width: 560px; max-width: 94vw; border-radius: 20px; overflow: hidden; box-shadow: var(--sh-lg)"
       @click.stop
     >
+      <!-- Header -->
       <div
         class="flex items-center justify-between"
         style="padding: 22px 26px; border-bottom: 1px solid var(--line)"
@@ -129,8 +169,12 @@ async function confirmBooking() {
         <div class="flex items-center gap-3">
           <UiAvatar name="Maren Halvorsen" color="var(--primary)" :size="40" />
           <div>
-            <div style="font-weight: 600">Consultation with Dr. Maren</div>
-            <div class="muted" style="font-size: 13px">30 min · Free intro · Video call</div>
+            <div style="font-weight: 600">Tsogoo-той уулзалт</div>
+            <div class="muted" style="font-size: 13px">
+              <span v-if="step === 0">Өдөр болон цаг сонгох</span>
+              <span v-else-if="step === 1">Төлбөрийн баримт</span>
+              <span v-else>Хүлээгдэж байна</span>
+            </div>
           </div>
         </div>
         <button class="btn btn-quiet" style="padding: 8px" @click="emit('close')">
@@ -138,7 +182,8 @@ async function confirmBooking() {
         </button>
       </div>
 
-      <div v-if="step < 2" style="padding: 26px">
+      <!-- Step 0: pick slot + topic -->
+      <div v-if="step === 0" style="padding: 26px">
         <div class="kicker cool" style="margin-bottom: 14px">Өдөр сонгох</div>
         <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">
           <button
@@ -177,15 +222,8 @@ async function confirmBooking() {
         </div>
         <p v-else-if="bookDate" class="muted" style="font-size: 14px">Энэ өдөрт боломжит цаг байхгүй эсвэл бүгд захиалагдсан байна.</p>
         <div class="field" style="margin-top: 22px">
-          <label
-            >What would you like to focus on?
-            <span class="muted" style="font-weight: 400">(optional)</span></label
-          >
-          <input
-            v-model="topic"
-            class="input"
-            placeholder="e.g. career direction, managing stress…"
-          />
+          <label>What would you like to focus on? <span class="muted" style="font-weight: 400">(optional)</span></label>
+          <input v-model="topic" class="input" placeholder="e.g. career direction, managing stress…" />
         </div>
         <p v-if="bookingErr" style="margin-top: 14px; font-size: 13px; color: var(--bad); text-align: center">
           {{ bookingErr }}
@@ -196,23 +234,90 @@ async function confirmBooking() {
           :disabled="!bookSlot"
           @click="confirmBooking"
         >
-          Confirm booking
+          Үргэлжлүүлэх <UiIcon name="arrowRight" :size="17" />
         </button>
       </div>
 
+      <!-- Step 1: payment screenshot upload -->
+      <div v-else-if="step === 1" style="padding: 26px">
+        <!-- selected slot recap -->
+        <div
+          class="flex items-center"
+          style="gap: 10px; padding: 12px 14px; background: var(--primary-tint); border-radius: 12px; margin-bottom: 22px; font-size: 14px; color: var(--primary-deep)"
+        >
+          <UiIcon name="calendar" :size="16" />
+          <span style="font-weight: 600">{{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}</span>
+        </div>
+
+        <!-- bank transfer info -->
+        <div class="card card-pad" style="border-radius: 14px; margin-bottom: 18px">
+          <div class="flex items-center" style="gap: 8px; margin-bottom: 12px">
+            <UiIcon name="bank" :size="18" style="color: var(--primary)" />
+            <span style="font-weight: 600; font-size: 14px">Банкны шилжүүлэг</span>
+          </div>
+          <div
+            v-for="[k, v] in [['Банк','Голомт банк'],['Дансны нэр','Гэрэлцэцэг Алтанцог'],['Дансны дугаар','2705130475']]"
+            :key="k"
+            class="flex items-center justify-between"
+            style="padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px"
+          >
+            <span class="muted">{{ k }}</span>
+            <span style="font-weight: 600">{{ v }}</span>
+          </div>
+        </div>
+
+        <label style="font-size: 13px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 10px">
+          Баримтын зураг хавсаргах <span style="color: var(--clay)">*</span>
+        </label>
+        <ImageSlot
+          id="booking-receipt"
+          :radius="12"
+          placeholder="Шилжүүлгийн баримтыг дуслах — эсвэл дарж нээнэ"
+          style="width: 100%; height: 180px"
+          @change="receiptFile = $event"
+        />
+
+        <div
+          class="flex items-center"
+          :style="{
+            gap: '8px', marginTop: '10px', fontSize: '13.5px',
+            color: receiptFile ? 'var(--good)' : 'var(--muted)',
+          }"
+        >
+          <UiIcon :name="receiptFile ? 'checkCircle' : 'upload'" :size="16" />
+          {{ receiptFile ? 'Баримт хавсарсан — илгээхэд бэлэн.' : 'PNG эсвэл JPG баримт.' }}
+        </div>
+
+        <p v-if="uploadErr" style="margin-top: 12px; font-size: 13px; color: var(--bad)">{{ uploadErr }}</p>
+
+        <div class="flex items-center" style="gap: 10px; margin-top: 22px">
+          <button class="btn btn-ghost" style="flex: none" @click="step = 0">
+            <UiIcon name="arrowLeft" :size="16" /> Буцах
+          </button>
+          <button
+            class="btn btn-primary btn-block btn-lg"
+            :disabled="!receiptFile || uploading"
+            @click="submitPayment"
+          >
+            <UiIcon v-if="uploading" name="clock" :size="17" style="animation: spin 1s linear infinite" />
+            {{ uploading ? 'Илгээж байна…' : 'Захиалга илгээх' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: success / pending review -->
       <div v-else style="padding: 40px 26px; text-align: center">
         <div
           class="pop"
-          style="width: 70px; height: 70px; border-radius: 50%; background: var(--good-tint); color: var(--good); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px"
+          style="width: 70px; height: 70px; border-radius: 50%; background: var(--warn-tint); color: var(--warn); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px"
         >
-          <UiIcon name="check" :size="34" />
+          <UiIcon name="clock" :size="34" />
         </div>
-        <h3 style="font-size: 24px; margin-bottom: 10px">You're booked.</h3>
+        <h3 style="font-size: 24px; margin-bottom: 10px">Захиалга илгээгдлээ.</h3>
         <p class="muted" style="max-width: 360px; margin: 0 auto 6px; font-size: 15px">
-          {{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}. A calendar invite and video link are on their way to
-          your inbox.
+          {{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}. Баримтыг шалгасны дараа хариу болон Google Meet линкийг имэйлээр илгээнэ.
         </p>
-        <button class="btn btn-ghost" style="margin-top: 22px" @click="emit('close')">Done</button>
+        <button class="btn btn-ghost" style="margin-top: 22px" @click="emit('close')">Хаах</button>
       </div>
     </div>
   </div>
@@ -262,5 +367,8 @@ async function confirmBooking() {
   .slot-grid {
     grid-template-columns: repeat(2, 1fr) !important;
   }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

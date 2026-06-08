@@ -55,10 +55,12 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
   if (!data?.uploadUrl || !data?.key) return { error: 'presign_failed' }
 
   try {
+    const headers = { 'Content-Type': contentType }
+    if (data.cacheControl) headers['Cache-Control'] = data.cacheControl
     const res = await fetch(data.uploadUrl, {
       method: 'PUT',
       body: file,
-      headers: { 'Content-Type': contentType },
+      headers,
     })
     if (!res.ok) return { error: `R2 upload failed: ${res.status}` }
   } catch (err) {
@@ -66,6 +68,63 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
   }
 
   return { key: data.key }
+}
+
+export async function uploadVideoToCloudflareStream(file, variant, token, onProgress) {
+  const { data, error } = await supabase.functions.invoke('stream-upload-url', {
+    body: { filename: file.name, variant },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (error) return { error: data?.error ?? error.message }
+  if (data?.error) return { error: data.error }
+  if (!data?.uploadURL || !data?.uid) return { error: 'stream_presign_failed' }
+
+  const form = new FormData()
+  form.append('file', file)
+
+  try {
+    if (typeof XMLHttpRequest !== 'undefined' && onProgress) {
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', data.uploadURL)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(e.loaded / e.total)
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`Stream upload failed: ${xhr.status}`))
+        }
+        xhr.onerror = () => reject(new Error('Stream upload failed: network'))
+        xhr.send(form)
+      })
+    } else {
+      const res = await fetch(data.uploadURL, { method: 'POST', body: form })
+      if (!res.ok) return { error: `Stream upload failed: ${res.status}` }
+    }
+  } catch (err) {
+    return { error: err?.message ?? 'Stream upload failed' }
+  }
+
+  return { uid: data.uid }
+}
+
+export function getStreamIframeUrl(uid) {
+  const code = import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
+  if (!uid || !code) return null
+  return `https://customer-${code}.cloudflarestream.com/${uid}/iframe`
+}
+
+export function getStreamHlsUrl(uid) {
+  const code = import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
+  if (!uid || !code) return null
+  return `https://customer-${code}.cloudflarestream.com/${uid}/manifest/video.m3u8`
+}
+
+export function getStreamThumbnailUrl(uid) {
+  const code = import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
+  if (!uid || !code) return null
+  return `https://customer-${code}.cloudflarestream.com/${uid}/thumbnails/thumbnail.jpg`
 }
 
 export async function getPresignDownloadUrl(lessonId, token, variant = 'desktop') {

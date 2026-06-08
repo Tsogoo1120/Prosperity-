@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import CalmField from '@/components/common/CalmField.vue'
-import { getThumbnailUrl } from '@/lib/videoUpload.js'
+import { getThumbnailUrl, getStreamIframeUrl } from '@/lib/videoUpload.js'
 
 const CDN_BASE = 'https://cdn.tsogoo.site'
 
@@ -18,8 +18,18 @@ function updateScreenWidth() {
 }
 
 const useVertical = computed(() => {
-  return screenWidth.value <= 768 && !!props.lesson?.video_r2_key_vertical
+  if (screenWidth.value > 768) return false
+  return !!(props.lesson?.video_stream_uid_vertical || props.lesson?.video_r2_key_vertical)
 })
+
+const streamUid = computed(() => {
+  if (useVertical.value) {
+    return props.lesson?.video_stream_uid_vertical ?? props.lesson?.video_stream_uid ?? null
+  }
+  return props.lesson?.video_stream_uid ?? props.lesson?.video_stream_uid_vertical ?? null
+})
+
+const streamIframeUrl = computed(() => getStreamIframeUrl(streamUid.value))
 
 const rawKey = computed(() => {
   if (useVertical.value) {
@@ -86,8 +96,24 @@ function toggle() { emit('update:playing', !props.playing) }
 </script>
 
 <template>
+  <!-- ── Cloudflare Stream (HLS + ABR + posters, auto) ── -->
+  <div v-if="streamIframeUrl" :style="{
+    borderRadius: '16px',
+    overflow: 'hidden',
+    position: 'relative',
+    aspectRatio: useVertical ? '9/16' : '16/9',
+    background: '#000',
+  }">
+    <iframe
+      :src="streamIframeUrl"
+      style="width: 100%; height: 100%; border: none; display: block"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture;"
+      allowfullscreen
+    />
+  </div>
+
   <!-- ── YouTube embed ── -->
-  <div v-if="isYoutube" style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: #000">
+  <div v-else-if="isYoutube" style="border-radius: 16px; overflow: hidden; position: relative; aspect-ratio: 16/9; background: #000">
     <iframe
       :src="embedUrl"
       style="width: 100%; height: 100%; border: none; display: block"
@@ -102,7 +128,8 @@ function toggle() { emit('update:playing', !props.playing) }
       :src="resolvedUrl"
       :poster="posterUrl ?? undefined"
       controls
-      preload="auto"
+      preload="metadata"
+      playsinline
       style="width: 100%; height: 100%; display: block; object-fit: contain"
     />
   </div>

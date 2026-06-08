@@ -4,6 +4,8 @@ import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3'
 const R2_DOWNLOAD_TTL = 3600
 const R2_UPLOAD_TTL = 900
 
+export const VIDEO_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 let cached: S3Client | null = null
 
 function envOrThrow(name: string): string {
@@ -43,14 +45,21 @@ export async function presignDownload(key: string): Promise<string> {
   return getSignedUrl(client, cmd, { expiresIn: R2_DOWNLOAD_TTL })
 }
 
-export async function presignUpload(key: string, contentType: string): Promise<string> {
+export async function presignUpload(
+  key: string,
+  contentType: string,
+  cacheControl?: string,
+): Promise<string> {
   const client = getR2Client()
   const cmd = new PutObjectCommand({
     Bucket: R2_BUCKET,
     Key: key,
     ContentType: contentType,
+    CacheControl: cacheControl,
   })
-  return getSignedUrl(client, cmd, { expiresIn: R2_UPLOAD_TTL })
+  const signableHeaders = new Set(['host'])
+  if (cacheControl) signableHeaders.add('cache-control')
+  return getSignedUrl(client, cmd, { expiresIn: R2_UPLOAD_TTL, signableHeaders })
 }
 
 export async function putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {

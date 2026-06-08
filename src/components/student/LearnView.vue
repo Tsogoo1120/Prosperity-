@@ -55,7 +55,7 @@ async function load() {
   loading.value = true
   const { data } = await supabase
     .from('video_lessons')
-    .select('id, slug, title, description, category, thumbnail_path, video_r2_key, video_r2_key_vertical, duration_seconds, sort_order')
+    .select('id, slug, title, description, category, thumbnail_path, video_r2_key, video_r2_key_vertical, video_stream_uid, video_stream_uid_vertical, duration_seconds, sort_order')
     .eq('is_published', true)
     .order('sort_order', { ascending: true })
   lessons.value = data ?? []

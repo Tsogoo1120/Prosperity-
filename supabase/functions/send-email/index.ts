@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
         if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
         const { data: slot } = await admin
           .from('coaching_slots')
-          .select('user_id, start_at, end_at')
+          .select('user_id, start_at, end_at, meet_link')
           .eq('id', slotId)
           .single()
         if (!slot?.user_id) break
@@ -202,6 +202,7 @@ Deno.serve(async (req) => {
           slotStartAt: slot.start_at,
           slotEndAt: slot.end_at,
           adminNote: adminNote ?? null,
+          meetLink: (slot as any).meet_link ?? null,
         })
         await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
         break

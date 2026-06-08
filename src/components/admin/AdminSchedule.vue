@@ -36,6 +36,8 @@ const pendingSlots = ref([])
 const loadingPending = ref(false)
 const actingSlotId = ref(null)
 const actErr = ref('')
+const screenshotUrls = reactive({})
+const meetLinkInputs = reactive({})
 
 function getMondayOf(date) {
   const d = new Date(date)
@@ -81,11 +83,21 @@ async function loadPendingRequests() {
   loadingPending.value = true
   const { data } = await supabase
     .from('coaching_slots')
-    .select('id, start_at, end_at, status, service_type, description, user_id, profiles(full_name, email, avatar_url)')
+    .select('id, start_at, end_at, status, service_type, description, user_id, payment_screenshot_path, profiles(full_name, email, avatar_url)')
     .eq('status', 'pending')
     .order('start_at', { ascending: true })
   pendingSlots.value = data ?? []
   loadingPending.value = false
+  // Load signed URLs for payment screenshots and init meet link inputs
+  for (const slot of (data ?? [])) {
+    if (slot.payment_screenshot_path && !screenshotUrls[slot.id]) {
+      supabase.storage
+        .from('payment-screenshots')
+        .createSignedUrl(slot.payment_screenshot_path, 3600)
+        .then(({ data: u }) => { if (u?.signedUrl) screenshotUrls[slot.id] = u.signedUrl })
+    }
+    if (meetLinkInputs[slot.id] === undefined) meetLinkInputs[slot.id] = ''
+  }
 }
 
 async function loadAvailability() {
@@ -201,16 +213,16 @@ const pendingCount = computed(() => pendingSlots.value.length)
 async function approveSlot(slot) {
   actingSlotId.value = slot.id
   actErr.value = ''
+  const meetLink = (meetLinkInputs[slot.id] ?? '').trim() || null
   const { error } = await supabase
     .from('coaching_slots')
-    .update({ status: 'booked' })
+    .update({ status: 'booked', meet_link: meetLink })
     .eq('id', slot.id)
   if (error) {
     actErr.value = error.message
     actingSlotId.value = null
     return
   }
-  // Fire email — non-fatal
   supabase.functions
     .invoke('send-email', { body: { type: 'coaching_approved', slotId: slot.id, adminNote: null } })
     .catch(() => {})
@@ -438,25 +450,53 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- Actions -->
-              <div class="flex items-center" style="gap: 8px; flex-shrink: 0">
-                <button
-                  class="btn btn-ghost btn-sm"
-                  style="color: var(--bad); border-color: var(--bad-tint)"
-                  :disabled="actingSlotId === slot.id"
-                  @click="denySlot(slot)"
-                >
-                  <UiIcon name="x" :size="16" /> Татгалзах
-                </button>
-                <button
-                  class="btn btn-sm"
-                  style="background: var(--good); color: #fff"
-                  :disabled="actingSlotId === slot.id"
-                  @click="approveSlot(slot)"
-                >
-                  <UiIcon name="check" :size="16" />
-                  {{ actingSlotId === slot.id ? 'Уншиж байна…' : 'Батлах' }}
-                </button>
+              <!-- Payment screenshot + meet link + actions -->
+              <div style="width: 100%; margin-top: 12px; display: flex; flex-direction: column; gap: 12px">
+                <!-- Screenshot thumbnail -->
+                <div v-if="slot.payment_screenshot_path" style="border-radius: 10px; overflow: hidden; border: 1px solid var(--line); max-height: 160px; background: var(--surface-2)">
+                  <img
+                    v-if="screenshotUrls[slot.id]"
+                    :src="screenshotUrls[slot.id]"
+                    alt="Баримт"
+                    style="width: 100%; max-height: 160px; object-fit: contain; display: block"
+                  />
+                  <div v-else style="padding: 18px; text-align: center; font-size: 12.5px; color: var(--muted)">Баримт уншиж байна…</div>
+                </div>
+                <div v-else style="padding: 12px; border-radius: 10px; background: var(--warn-tint); font-size: 12.5px; color: var(--warn)">
+                  Төлбөрийн баримт байхгүй
+                </div>
+
+                <!-- Google Meet link input -->
+                <div>
+                  <label style="font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 5px">Google Meet линк (батлахад илгээнэ)</label>
+                  <input
+                    v-model="meetLinkInputs[slot.id]"
+                    class="input"
+                    placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                    style="font-size: 13px"
+                  />
+                </div>
+
+                <!-- Approve / deny -->
+                <div class="flex items-center" style="gap: 8px">
+                  <button
+                    class="btn btn-ghost btn-sm"
+                    style="color: var(--bad); border-color: var(--bad-tint)"
+                    :disabled="actingSlotId === slot.id"
+                    @click="denySlot(slot)"
+                  >
+                    <UiIcon name="x" :size="16" /> Татгалзах
+                  </button>
+                  <button
+                    class="btn btn-sm"
+                    style="background: var(--good); color: #fff"
+                    :disabled="actingSlotId === slot.id"
+                    @click="approveSlot(slot)"
+                  >
+                    <UiIcon name="check" :size="16" />
+                    {{ actingSlotId === slot.id ? 'Уншиж байна…' : 'Батлах' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
