@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import { getThumbnailUrl } from '@/lib/videoUpload.js'
 import UiIcon from '@/components/common/UiIcon.vue'
+import VideoLessonPreviewModal from './VideoLessonPreviewModal.vue'
 
 const emit = defineEmits(['nav'])
 
@@ -11,6 +12,18 @@ const { session, profile } = useAuth()
 
 const lessons = ref([])
 const loading = ref(true)
+const previewOpen = ref(false)
+const selectedLesson = ref(null)
+const selectedHue = ref('var(--primary)')
+
+const HUES = ['var(--primary)', 'var(--sage-deep)', 'var(--clay)', 'var(--gold)']
+function lessonHue(i) { return HUES[i % HUES.length] }
+
+function openPreview(lesson, hue) {
+  selectedLesson.value = lesson
+  selectedHue.value = hue
+  previewOpen.value = true
+}
 
 onMounted(async () => {
   const { data } = await supabase
@@ -68,20 +81,20 @@ function handleWatch() {
       <div
         v-for="(lesson, i) in lessons"
         :key="lesson.id"
-        class="card pop"
+        class="card pop course-card"
         :style="{ animationDelay: i * 0.06 + 's', borderRadius: '16px', overflow: 'hidden', cursor: 'pointer' }"
         role="button"
         tabindex="0"
-        @click="handleWatch"
-        @keydown.enter.prevent="handleWatch"
-        @keydown.space.prevent="handleWatch"
+        @click="openPreview(lesson, lessonHue(i))"
+        @keydown.enter.prevent="openPreview(lesson, lessonHue(i))"
+        @keydown.space.prevent="openPreview(lesson, lessonHue(i))"
       >
         <!-- thumbnail / cover -->
         <div
-          class="video-lesson-card__media"
+          class="course-card__media"
           :style="getThumbnailUrl(lesson.thumbnail_path)
             ? { backgroundImage: `url(${getThumbnailUrl(lesson.thumbnail_path)})` }
-            : { background: 'linear-gradient(150deg, var(--sage), var(--clay))' }"
+            : { background: `linear-gradient(150deg, ${lessonHue(i)}, color-mix(in srgb, ${lessonHue(i)} 55%, #16313f))` }"
         >
           <div class="grain" style="position: absolute; inset: 0" />
 
@@ -130,12 +143,12 @@ function handleWatch() {
         </div>
 
         <!-- info -->
-        <div style="padding: 16px">
-          <h3 style="font-size: 16px; margin-bottom: 6px; line-height: 1.35">{{ lesson.title }}</h3>
+        <div style="padding: 18px">
+          <h3 style="font-size: 18px; margin-bottom: 7px; line-height: 1.35">{{ lesson.title }}</h3>
           <p
             v-if="lesson.description"
             class="muted"
-            style="font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden"
+            style="font-size: 13.5px; line-height: 1.5; min-height: 40px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden"
           >{{ lesson.description }}</p>
           <p
             v-if="!canWatch"
@@ -154,25 +167,34 @@ function handleWatch() {
         <UiIcon name="arrowRight" :size="17" />
       </button>
     </div>
+
+    <VideoLessonPreviewModal
+      :open="previewOpen"
+      :lesson="selectedLesson"
+      :can-watch="canWatch"
+      :hue="selectedHue"
+      @close="previewOpen = false"
+      @watch="emit('nav', 'student')"
+      @enroll="emit('nav', 'enroll')"
+    />
   </section>
 </template>
 
 <style scoped>
-.video-lesson-card__media {
-  height: 148px;
+.course-card__media {
+  height: 132px;
   position: relative;
   background-size: cover;
   background-position: center;
-  transition: transform 0.2s;
 }
-.card:hover .video-lesson-card__play {
-  opacity: 1 !important;
-}
-.card {
+.course-card {
   transition: transform 0.2s, box-shadow 0.2s;
 }
-.card:hover {
+.course-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--sh-md);
+}
+.course-card:hover .video-lesson-card__play {
+  opacity: 1 !important;
 }
 </style>

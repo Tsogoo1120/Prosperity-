@@ -6,9 +6,10 @@ const profile = ref(null)
 const loading = ref(true)
 
 async function fetchProfile(userId) {
+  await supabase.rpc('claim_admin_if_allowlisted').catch(() => {})
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, email, phone, avatar_url, subscription_status, role')
+    .select('id, full_name, email, phone, avatar_url, subscription_status, role, is_admin')
     .eq('id', userId)
     .single()
   profile.value = data ?? null
@@ -35,9 +36,10 @@ async function init() {
 
 function isAdmin() {
   if (!session.value) return false
+  if (profile.value?.role === 'admin' || profile.value?.is_admin) return true
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
   if (adminEmail && session.value.user.email === adminEmail) return true
-  return profile.value?.role === 'admin'
+  return false
 }
 
 async function signInWithGoogle() {

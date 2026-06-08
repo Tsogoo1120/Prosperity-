@@ -1,4 +1,4 @@
-import { CORS, json, requireUser } from '../_shared/auth.ts'
+import { CORS, isUserAdmin, json, requireUser } from '../_shared/auth.ts'
 
 // Admin-only. Requests a Cloudflare Stream direct creator upload URL.
 // Client then POSTs the video file as multipart/form-data to the returned uploadURL.
@@ -19,13 +19,7 @@ Deno.serve(async (req) => {
 
   const { user, admin } = auth
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
+  if (!(await isUserAdmin(admin, user.id, user.email))) {
     return json({ error: 'forbidden' }, 403)
   }
 

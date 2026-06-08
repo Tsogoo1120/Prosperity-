@@ -1,4 +1,4 @@
-import { CORS, canAccessSubscriberContent, json, requireUser } from '../_shared/auth.ts'
+import { CORS, canAccessSubscriberContent, isProfileAdmin, json, requireUser } from '../_shared/auth.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!lesson) return json({ error: 'not_found' }, 404)
-  if (profile?.role !== 'admin' && !lesson.is_published) {
+  if (!isProfileAdmin(profile) && !lesson.is_published) {
     return json({ error: 'not_found' }, 404)
   }
 

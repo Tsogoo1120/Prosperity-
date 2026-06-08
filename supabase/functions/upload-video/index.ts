@@ -1,4 +1,4 @@
-import { CORS, json, requireUser } from '../_shared/auth.ts'
+import { CORS, isUserAdmin, json, requireUser } from '../_shared/auth.ts'
 import { generateR2Key, presignUpload, VIDEO_CACHE_CONTROL } from '../_shared/r2.ts'
 
 const ALLOWED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
@@ -11,13 +11,7 @@ Deno.serve(async (req) => {
 
   const { user, admin } = auth
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
+  if (!(await isUserAdmin(admin, user.id, user.email))) {
     return json({ error: 'forbidden' }, 403)
   }
 

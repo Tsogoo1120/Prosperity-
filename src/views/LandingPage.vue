@@ -4,7 +4,6 @@ import { useLandingMotion } from '@/composables/useLandingMotion.js'
 import TopNav from '@/components/landing/TopNav.vue'
 import HeroSection from '@/components/landing/HeroSection.vue'
 import VideoIntroSection from '@/components/landing/VideoIntroSection.vue'
-import CoursePreview from '@/components/landing/CoursePreview.vue'
 import VideoLessonsSection from '@/components/landing/VideoLessonsSection.vue'
 import MentorSection from '@/components/landing/MentorSection.vue'
 import ClosingCta from '@/components/landing/ClosingCta.vue'
@@ -96,7 +95,6 @@ onBeforeUnmount(() => {
     />
     <HeroSection @nav="emit('nav', $event)" />
     <VideoIntroSection @nav="emit('nav', $event)" />
-    <CoursePreview @nav="emit('nav', $event)" />
     <VideoLessonsSection @nav="emit('nav', $event)" />
     <MentorSection @book="booking = true" />
     <ClosingCta />

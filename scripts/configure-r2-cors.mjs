@@ -34,11 +34,19 @@ const env = Object.fromEntries(
     }),
 )
 
+const productionOrigins = [
+  'https://www.tsogoo.site',
+  'https://tsogoo.site',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]
+
 const corsRules = [
   {
-    AllowedOrigins: ['*'],
+    AllowedOrigins: productionOrigins,
     AllowedMethods: ['GET', 'PUT', 'HEAD'],
     AllowedHeaders: ['*'],
+    ExposeHeaders: ['ETag'],
     MaxAgeSeconds: 3000,
   },
 ]
@@ -47,9 +55,10 @@ const cfCorsRules = [
   {
     allowed: {
       methods: ['GET', 'PUT', 'HEAD'],
-      origins: ['*'],
+      origins: productionOrigins,
       headers: ['*'],
     },
+    exposeHeaders: ['ETag'],
     maxAgeSeconds: 3000,
   },
 ]
@@ -187,11 +196,14 @@ try {
 } catch (err) {
   console.error('\nFailed to configure R2 CORS:', err.message ?? err)
   console.error(`
-Fix options:
-  1. Cloudflare dashboard → R2 → ${env.R2_BUCKET} → Settings → CORS policy
-     Add rule: Origins *, Methods GET+PUT+HEAD, Headers *
-  2. Create R2 API token with "Admin Read & Write", re-run npm run configure:cors, then rotate back to Object RW
-  3. Add CLOUDFLARE_API_TOKEN (Account → API Tokens, R2 Edit) to .env and re-run
+Manual fix (Cloudflare dashboard → JSON tab — array format, NOT wrangler "rules" wrapper):
+  1. R2 → ${env.R2_BUCKET} → Settings → CORS policy → Add CORS policy
+  2. Paste this JSON:
+
+${JSON.stringify(corsRules, null, 2)}
+
+Or create an API token with "Account → R2 → Edit" permission, add as CLOUDFLARE_API_TOKEN in .env, then re-run:
+  npm run configure:cors
 `)
   process.exit(1)
 }

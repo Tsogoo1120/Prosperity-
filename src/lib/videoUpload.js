@@ -50,6 +50,10 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
     headers: { Authorization: `Bearer ${token}` },
   })
 
+  // #region agent log
+  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'daec39'},body:JSON.stringify({sessionId:'daec39',location:'videoUpload.js:r2-presign',message:'upload-video presign result',data:{hasError:!!error,errorMessage:error?.message,dataError:data?.error,hasUploadUrl:!!data?.uploadUrl,origin:typeof location!=='undefined'?location.origin:null},timestamp:Date.now(),hypothesisId:'R2-A'})}).catch(()=>{});
+  // #endregion
+
   if (error) return { error: data?.error ?? error.message }
   if (data?.error) return { error: data.error }
   if (!data?.uploadUrl || !data?.key) return { error: 'presign_failed' }
@@ -62,21 +66,44 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
       body: file,
       headers,
     })
+    // #region agent log
+    fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'daec39'},body:JSON.stringify({sessionId:'daec39',location:'videoUpload.js:r2-put',message:'R2 PUT result',data:{ok:res.ok,status:res.status,origin:typeof location!=='undefined'?location.origin:null},timestamp:Date.now(),hypothesisId:'R2-B'})}).catch(()=>{});
+    // #endregion
     if (!res.ok) return { error: `R2 upload failed: ${res.status}` }
   } catch (err) {
-    return { error: err?.message ?? 'R2 upload failed' }
+    // #region agent log
+    fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'daec39'},body:JSON.stringify({sessionId:'daec39',location:'videoUpload.js:r2-put-catch',message:'R2 PUT failed',data:{errorMessage:err?.message,origin:typeof location!=='undefined'?location.origin:null},timestamp:Date.now(),hypothesisId:'R2-C'})}).catch(()=>{});
+    // #endregion
+    const msg = err?.message ?? 'R2 upload failed'
+    if (/failed to fetch|cors/i.test(msg)) {
+      return { error: 'R2 CORS blocked: add CORS rule on union-videos bucket for this site origin (GET, PUT, HEAD)' }
+    }
+    return { error: msg }
   }
 
   return { key: data.key }
 }
 
 export async function uploadVideoToCloudflareStream(file, variant, token, onProgress) {
+  // #region agent log
+  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'daec39'},body:JSON.stringify({sessionId:'daec39',location:'videoUpload.js:invoke-start',message:'stream-upload-url invoke start',data:{variant,hasToken:!!token,filename:file?.name,fileSize:file?.size},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   const { data, error } = await supabase.functions.invoke('stream-upload-url', {
     body: { filename: file.name, variant },
     headers: { Authorization: `Bearer ${token}` },
   })
+  // #region agent log
+  let contextBody = null
+  if (error?.context) {
+    try {
+      const cloned = error.context.clone ? await error.context.clone().json() : null
+      contextBody = cloned
+    } catch { contextBody = 'parse_failed' }
+  }
+  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'daec39'},body:JSON.stringify({sessionId:'daec39',location:'videoUpload.js:invoke-result',message:'stream-upload-url invoke result',data:{hasError:!!error,errorMessage:error?.message,errorName:error?.name,dataError:data?.error,dataKeys:data?Object.keys(data):[],contextStatus:error?.context?.status,contextBody},timestamp:Date.now(),hypothesisId:'A,B,C,D'})}).catch(()=>{});
+  // #endregion
 
-  if (error) return { error: data?.error ?? error.message }
+  if (error) return { error: data?.error ?? contextBody?.error ?? error.message }
   if (data?.error) return { error: data.error }
   if (!data?.uploadURL || !data?.uid) return { error: 'stream_presign_failed' }
 
