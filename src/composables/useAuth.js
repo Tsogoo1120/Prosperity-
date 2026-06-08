@@ -6,7 +6,11 @@ const profile = ref(null)
 const loading = ref(true)
 
 async function fetchProfile(userId) {
-  await supabase.rpc('claim_admin_if_allowlisted').catch(() => {})
+  try {
+    await supabase.rpc('claim_admin_if_allowlisted')
+  } catch {
+    // RPC may be unavailable before migration is applied
+  }
   const { data } = await supabase
     .from('profiles')
     .select('id, full_name, email, phone, avatar_url, subscription_status, role, is_admin')
