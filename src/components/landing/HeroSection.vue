@@ -26,6 +26,9 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayMap = computed(() => {
   const map = {};
   for (const s of rawSlots.value) {
+    // Hero section booking is for "Хувийн уншлага" (Tarot)
+    if (s.service_type !== 'tarot_reading') continue;
+
     const iso = s.start_at.slice(0, 10);
     if (!map[iso]) {
       const d = new Date(s.start_at);

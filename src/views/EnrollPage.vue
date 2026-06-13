@@ -1,7 +1,6 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { services } from '@/data/union.js'
-import { calDays, calSlots } from '@/data/booking-calendar.js'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import UiLogo from '@/components/common/UiLogo.vue'
@@ -35,6 +34,80 @@ const STEP_LABELS = {
   payment: 'Төлбөр',
   review: 'Батлагдсан',
 }
+
+// ── Available slots fetching ──────────────────────────────────────────────────
+const rawSlots = ref([])
+const loadingSlots = ref(false)
+
+async function loadAvailableSlots() {
+  loadingSlots.value = true
+  const now = new Date().toISOString()
+  const { data } = await supabase
+    .from('coaching_slots')
+    .select('id, start_at, end_at, service_type')
+    .eq('status', 'available')
+    .is('user_id', null)
+    .gte('start_at', now)
+    .order('start_at', { ascending: true })
+  rawSlots.value = data ?? []
+  loadingSlots.value = false
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTH_NAMES = ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар']
+
+const dayMap = computed(() => {
+  const map = {}
+  const serviceId = selectedService.value.id
+  // Map service ID to slot service_type
+  const targetType = serviceId === 'tarot' ? 'tarot_reading' : 'coaching'
+
+  for (const s of rawSlots.value) {
+    // Only show slots matching the selected service type
+    if (s.service_type !== targetType) continue
+
+    const iso = s.start_at.slice(0, 10)
+    if (!map[iso]) {
+      const d = new Date(s.start_at)
+      map[iso] = {
+        iso,
+        d: DAY_NAMES[d.getDay()],
+        n: d.getDate(),
+        m: d.getMonth(),
+        y: d.getFullYear(),
+        items: []
+      }
+    }
+    const d = new Date(s.start_at)
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    map[iso].items.push({ id: s.id, time: `${hh}:${mm}`, raw: s })
+  }
+  return map
+})
+
+const availDays = computed(() => Object.values(dayMap.value))
+
+const currentMonthLabel = computed(() => {
+  if (!availDays.value.length) return ''
+  const first = availDays.value[0]
+  return `${MONTH_NAMES[first.m]}`
+})
+
+const currentItems = computed(() => {
+  if (!bookDate.value?.iso) return []
+  return dayMap.value[bookDate.value.iso]?.items ?? []
+})
+
+let realtimeChannel = null
+function subscribeRealtime() {
+  realtimeChannel = supabase
+    .channel('enroll-available-slots')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, loadAvailableSlots)
+    .subscribe()
+}
+
+onUnmounted(() => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) })
 
 const bookingComplete = computed(() => Boolean(bookDate.value && bookSlot.value))
 
@@ -111,13 +184,27 @@ watch(
 
 function applyBookingPrefill(source) {
   if (!source?.bookDate || !source?.bookSlot) return
-  const day =
-    calDays.find((d) => d.n === source.bookDate.n && d.d === source.bookDate.d) ??
-    source.bookDate
-  bookDate.value = day
-  bookSlot.value = source.bookSlot
+  // Try to find the matching day in our dynamic availDays
+  const day = availDays.value.find(d => d.iso === source.bookDate.iso)
+  if (day) {
+    bookDate.value = day
+    // Try to find matching slot in that day
+    const slot = day.items.find(s => s.time === (source.bookSlot.time || source.bookSlot))
+    if (slot) bookSlot.value = slot
+  }
   bookingFromLanding.value = true
 }
+
+// Watch rawSlots to re-apply prefill once slots are loaded
+watch(rawSlots, () => {
+  if (bookingFromLanding.value) return // already applied or manually picking
+  const prefillRaw = sessionStorage.getItem('union-booking-prefill')
+  if (prefillRaw) {
+    try {
+      applyBookingPrefill(JSON.parse(prefillRaw))
+    } catch(e) {}
+  }
+}, { immediate: true })
 
 function applyEnrollIntent() {
   const raw = sessionStorage.getItem('union-enroll-intent')
@@ -127,25 +214,21 @@ function applyEnrollIntent() {
       const intent = JSON.parse(raw)
       const match = services.find((s) => s.id === intent.serviceId)
       if (match) selectedService.value = match
-      applyBookingPrefill(intent)
+      if (intent.bookDate && intent.bookSlot) {
+        applyBookingPrefill(intent)
+      }
       if (intent.step !== undefined) step.value = intent.step
     } catch {
       /* ignore malformed intent */
     }
   }
-
-  const prefillRaw = sessionStorage.getItem('union-booking-prefill')
-  if (prefillRaw) {
-    sessionStorage.removeItem('union-booking-prefill')
-    try {
-      applyBookingPrefill(JSON.parse(prefillRaw))
-    } catch {
-      /* ignore malformed prefill */
-    }
-  }
 }
 
-onMounted(applyEnrollIntent)
+onMounted(() => {
+  loadAvailableSlots()
+  subscribeRealtime()
+  applyEnrollIntent()
+})
 
 // ── Auth actions ──────────────────────────────────────────────────────────────
 
@@ -190,6 +273,27 @@ async function submitPayment() {
     return
   }
 
+  // Claim the coaching slot if applicable
+  if (bookSlot.value?.id) {
+    const { error: slotErr } = await supabase
+      .from('coaching_slots')
+      .update({
+        status: 'pending',
+        user_id: userId,
+        description: `Enrollment: ${selectedService.value.title}${selectedTarotOption.value ? ' - ' + selectedTarotOption.value.title : ''}`,
+        payment_screenshot_path: path,
+      })
+      .eq('id', bookSlot.value.id)
+      .eq('status', 'available')
+
+    if (slotErr) {
+      await supabase.storage.from('payment-screenshots').remove([path])
+      submitError.value = 'Цаг захиалахад алдаа гарлаа. Энэ цаг аль хэдийн захиалагдсан байж магадгүй.'
+      submitting.value = false
+      return
+    }
+  }
+
   const { data: paymentRow, error: insertErr } = await supabase
     .from('payments')
     .insert({
@@ -205,7 +309,9 @@ async function submitPayment() {
     .single()
 
   if (insertErr) {
-    await supabase.storage.from('payment-screenshots').remove([path])
+    // If we claimed a slot but payment record failed, we might want to revert the slot claim
+    // but usually, we'd rather keep it pending or handle it manually.
+    // For now, let's just report the error.
     submitError.value = 'Мэдээлэл хадгалахад алдаа: ' + insertErr.message
     submitting.value = false
     return
@@ -260,7 +366,7 @@ const reviewRows = computed(() => {
     ],
   ]
   if (bookDate.value && bookSlot.value)
-    rows.push(['Цаг', `${bookDate.value.d} ${bookDate.value.n}, ${bookSlot.value}`])
+    rows.push(['Цаг', `${bookDate.value.d} ${bookDate.value.n}, ${bookSlot.value.time}`])
   rows.push(['Дүн', fmtMNT(finalPrice.value) + (discountActive.value ? ' (30% хөнгөлөлт)' : '')])
   rows.push(['Төлөв', 'Хүлээгдэж байна'])
   return rows
@@ -556,49 +662,53 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
           {{ selectedService.id === 'tarot' ? '30 минут · Онлайн уулзалт' : '1 цаг · Онлайн уулзалт' }}
         </p>
         <div class="card card-pad" style="border-radius: 16px">
-          <div class="kicker cool" style="margin-bottom: 14px">7-р сарын ажиллах өдрүүд</div>
-          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 24px">
+          <div class="kicker cool" style="margin-bottom: 14px">{{ currentMonthLabel || 'Ажиллах өдрүүд' }}</div>
+          <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">
             <button
-              v-for="day in calDays"
-              :key="day.n"
+              v-for="day in availDays"
+              :key="day.iso"
+              type="button"
               class="daycell"
-              :disabled="day.unavail"
               :style="{
-                borderColor: bookDate?.n === day.n ? 'var(--primary)' : day.unavail ? 'var(--line-soft)' : 'var(--line)',
-                background: bookDate?.n === day.n ? 'var(--primary-tint)' : day.unavail ? 'var(--surface)' : 'var(--card)',
-                color: bookDate?.n === day.n ? 'var(--primary-deep)' : day.unavail ? 'var(--faint)' : 'var(--ink)',
-                cursor: day.unavail ? 'not-allowed' : 'pointer',
-                opacity: day.unavail ? 0.5 : 1,
+                borderColor: bookDate?.iso === day.iso ? 'var(--primary)' : 'var(--line)',
+                background: bookDate?.iso === day.iso ? 'var(--primary-tint)' : 'var(--card)',
+                color: bookDate?.iso === day.iso ? 'var(--primary-deep)' : 'var(--ink)',
               }"
               @click="bookDate = day; bookSlot = null"
             >
-              <span style="font-size: 10.5px; font-weight: 600; opacity: 0.7">{{ day.d }}</span>
-              <span style="font-size: 18px; font-family: var(--serif); font-weight: 600">{{ day.n }}</span>
+              <span style="font-size: 12px; font-weight: 600; opacity: 0.7">{{ day.d }}</span>
+              <span style="font-size: 21px; font-family: var(--serif); font-weight: 600">{{ day.n }}</span>
             </button>
           </div>
+          <p v-else-if="!loadingSlots" class="muted" style="font-size: 14px; margin-bottom: 26px">Одоогоор боломжит цаг байхгүй байна.</p>
+          <p v-else class="muted" style="font-size: 14px; margin-bottom: 26px">Уншиж байна...</p>
+
           <div class="kicker cool" style="margin-bottom: 14px">Боломжтой цагууд</div>
-          <div class="slot-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
+          <div v-if="currentItems.length" class="slot-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
             <button
-              v-for="s in calSlots"
-              :key="s"
+              v-for="s in currentItems"
+              :key="s.id"
               class="slotcell"
               :style="{
-                borderColor: bookSlot === s ? 'var(--clay)' : 'var(--line)',
-                background: bookSlot === s ? 'var(--clay)' : 'var(--card)',
-                color: bookSlot === s ? '#fff' : 'var(--ink)',
+                borderColor: bookSlot?.id === s.id ? 'var(--clay)' : 'var(--line)',
+                background: bookSlot?.id === s.id ? 'var(--clay)' : 'var(--card)',
+                color: bookSlot?.id === s.id ? '#fff' : 'var(--ink)',
               }"
               @click="bookSlot = s"
             >
-              {{ s }}
+              {{ s.time }}
             </button>
           </div>
+          <p v-else-if="bookDate" class="muted" style="font-size: 14px">Энэ өдөрт боломжит цаг байхгүй байна.</p>
+          <p v-else class="muted" style="font-size: 14px">Өдөр сонгоно уу.</p>
+
           <div
             v-if="bookDate && bookSlot"
             class="flex items-center"
             style="gap: 8px; margin-top: 16px; padding: 12px 14px; background: var(--good-tint); border-radius: 10px; font-size: 14px; color: var(--good)"
           >
             <UiIcon name="checkCircle" :size="17" />
-            {{ bookDate.d }} {{ bookDate.n }}-нд {{ bookSlot }} цагт захиалгасан
+            {{ bookDate.d }} {{ bookDate.n }}-нд {{ bookSlot.time }} цагт захиалгасан
           </div>
         </div>
       </div>
