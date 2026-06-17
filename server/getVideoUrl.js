@@ -59,9 +59,6 @@ async function presignDownload(env, key) {
 }
 
 export async function resolveGetVideoUrl({ authorization, body }, env) {
-  // #region agent log
-  try{const fs=await import('node:fs');fs.appendFileSync('debug-f0e9bf.log',JSON.stringify({sessionId:'f0e9bf',location:'getVideoUrl.js:resolveGetVideoUrl:entry',message:'Resolving video URL',data:{hasAuth:!!authorization,lessonId:body?.lessonId,variant:body?.variant,hasR2Key:!!env.R2_ACCESS_KEY_ID,hasSupabaseUrl:!!(env.VITE_SUPABASE_URL??env.SUPABASE_URL)},timestamp:Date.now(),hypothesisId:'D,E'})+'\n')}catch{}
-  // #endregion
   const auth = await requireUser(authorization, env)
   if (auth.error) return { status: auth.status, body: { error: auth.error } }
 
@@ -98,15 +95,9 @@ export async function resolveGetVideoUrl({ authorization, body }, env) {
 
   try {
     const url = await presignDownload(env, key)
-    // #region agent log
-    try{const fs=await import('node:fs');fs.appendFileSync('debug-f0e9bf.log',JSON.stringify({sessionId:'f0e9bf',location:'getVideoUrl.js:resolveGetVideoUrl:success',message:'Presigned URL generated',data:{lessonId,variant,hasUrl:!!url},timestamp:Date.now(),hypothesisId:'E'})+'\n')}catch{}
-    // #endregion
     return { status: 200, body: { url } }
   } catch (err) {
     console.error('[getVideoUrl] presign failed:', err)
-    // #region agent log
-    try{const fs=await import('node:fs');fs.appendFileSync('debug-f0e9bf.log',JSON.stringify({sessionId:'f0e9bf',location:'getVideoUrl.js:resolveGetVideoUrl:presignError',message:'Presign failed',data:{lessonId,errorName:err?.name,errorMessage:err?.message},timestamp:Date.now(),hypothesisId:'E'})+'\n')}catch{}
-    // #endregion
     return { status: 500, body: { error: 'presign_failed' } }
   }
 }

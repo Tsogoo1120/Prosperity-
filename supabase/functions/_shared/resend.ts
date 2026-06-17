@@ -1,5 +1,5 @@
-export const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
-export const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'Union <hello@union.mn>'
+const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
+const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'Union <hello@union.mn>'
 export const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://union.mn'
 
 export async function sendOne(

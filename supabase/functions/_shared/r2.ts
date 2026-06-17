@@ -1,7 +1,6 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from 'npm:@aws-sdk/client-s3@3'
+import { PutObjectCommand, S3Client } from 'npm:@aws-sdk/client-s3@3'
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3'
 
-const R2_DOWNLOAD_TTL = 3600
 const R2_UPLOAD_TTL = 900
 
 export const VIDEO_CACHE_CONTROL = 'public, max-age=31536000, immutable'
@@ -14,7 +13,7 @@ function envOrThrow(name: string): string {
   return v
 }
 
-export function getR2Client(): S3Client {
+function getR2Client(): S3Client {
   if (cached) return cached
   const accountId = envOrThrow('R2_ACCOUNT_ID')
   const endpoint = Deno.env.get('R2_ENDPOINT') ?? `https://${accountId}.r2.cloudflarestorage.com`
@@ -32,17 +31,11 @@ export function getR2Client(): S3Client {
   return cached
 }
 
-export const R2_BUCKET = Deno.env.get('R2_BUCKET') ?? 'union-videos'
+const R2_BUCKET = Deno.env.get('R2_BUCKET') ?? 'union-videos'
 
 export function generateR2Key(prefix: string, filename: string): string {
   const ext = (filename.split('.').pop() ?? 'mp4').toLowerCase()
   return `videos/${prefix}/${crypto.randomUUID()}.${ext}`
-}
-
-export async function presignDownload(key: string): Promise<string> {
-  const client = getR2Client()
-  const cmd = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key })
-  return getSignedUrl(client, cmd, { expiresIn: R2_DOWNLOAD_TTL })
 }
 
 export async function presignUpload(
@@ -62,14 +55,3 @@ export async function presignUpload(
   return getSignedUrl(client, cmd, { expiresIn: R2_UPLOAD_TTL, signableHeaders })
 }
 
-export async function putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {
-  const client = getR2Client()
-  await client.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    }),
-  )
-}
