@@ -26,9 +26,6 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayMap = computed(() => {
   const map = {};
   for (const s of rawSlots.value) {
-    // Hero section booking is for "Хувийн уншлага" (Tarot)
-    if (s.service_type !== 'tarot_reading') continue;
-
     const iso = s.start_at.slice(0, 10);
     if (!map[iso]) {
       const d = new Date(s.start_at);
@@ -37,16 +34,16 @@ const dayMap = computed(() => {
     const d = new Date(s.start_at);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
-    map[iso].items.push({ id: s.id, time: `${hh}:${mm}` });
+    map[iso].items.push({ id: s.id, time: `${hh}:${mm}`, serviceType: s.service_type });
   }
   return map;
 });
 
 const availDays = computed(() => Object.values(dayMap.value));
 
-const currentSlotTimes = computed(() => {
+const currentSlots = computed(() => {
   if (!bookDate.value?.iso) return [];
-  return dayMap.value[bookDate.value.iso]?.items.map((i) => i.time) ?? [];
+  return dayMap.value[bookDate.value.iso]?.items ?? [];
 });
 
 async function loadAvailableSlots() {
@@ -80,7 +77,7 @@ onUnmounted(() => {
 });
 
 const bookingSummary = computed(() =>
-  formatBookingSummary(bookDate.value, bookSlot.value),
+  formatBookingSummary(bookDate.value, bookSlot.value?.time ?? bookSlot.value),
 );
 
 const hasBooking = computed(
@@ -101,9 +98,11 @@ function confirmPicker() {
 }
 
 function goEnrollPayment() {
-  const intent = { serviceId: "tarot" };
+  const slotServiceType = bookSlot.value?.serviceType
+  const serviceId = slotServiceType === 'tarot_reading' ? 'tarot' : slotServiceType === 'coaching' ? 'coaching' : 'tarot'
+  const intent = { serviceId };
   if (bookDate.value && bookSlot.value) {
-    intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n };
+    intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso };
     intent.bookSlot = bookSlot.value;
   }
   sessionStorage.setItem("union-enroll-intent", JSON.stringify(intent));
@@ -228,19 +227,19 @@ function onPrimaryClick() {
           <p v-else class="muted" style="font-size: 13px; margin-bottom: 18px">Одоогоор боломжит цаг байхгүй байна.</p>
 
           <p class="kicker cool" style="margin: 18px 0 12px">Боломжит цаг</p>
-          <div v-if="currentSlotTimes.length" class="hero-booking-slots">
+          <div v-if="currentSlots.length" class="hero-booking-slots">
             <button
-              v-for="slot in currentSlotTimes"
-              :key="slot"
+              v-for="slot in currentSlots"
+              :key="slot.id"
               type="button"
               class="hero-booking-slot"
-              :class="{ 'is-selected': bookSlot === slot }"
+              :class="{ 'is-selected': bookSlot?.id === slot.id }"
               @click="bookSlot = slot"
             >
-              {{ slot }}
+              {{ slot.time }}
             </button>
           </div>
-          <p v-else-if="bookDate" class="muted" style="font-size: 13px">Энэ өдөрт боломжит цаг байхгүй.</p>
+          <p v-else-if="bookDate" class="muted" style="font-size: 13px; margin-bottom: 0">Энэ өдөрт боломжит цаг байхгүй.</p>
 
           <div class="hero-picker__actions">
             <button
