@@ -147,6 +147,10 @@ async function saveNewSlot() {
     addSlotErr.value = 'Дуусах цаг эхлэх цагаас хойш байх ёстой'
     return
   }
+  if (startDt <= new Date()) {
+    addSlotErr.value = 'Эхлэх цаг ирээдүйд байх ёстой'
+    return
+  }
   addingSlot.value = true
   addSlotErr.value = ''
   const { error } = await supabase.from('coaching_slots').insert({

@@ -27,7 +27,7 @@ async function loadSessions() {
   const now = new Date().toISOString()
   const { data } = await supabase
     .from('coaching_slots')
-    .select('id, start_at, end_at, status, service_type, description')
+    .select('id, start_at, end_at, status, service_type, description, meet_link')
     .eq('user_id', session.value.user.id)
     .order('start_at', { ascending: true })
   if (!data) return
@@ -40,6 +40,7 @@ async function loadSessions() {
       topic: serviceLabel(s.service_type),
       name: 'Dr. Maren',
       dur: Math.round((new Date(s.end_at) - new Date(s.start_at)) / 60000),
+      meetLink: s.meet_link ?? null,
     }))
   past.value = data
     .filter((s) => s.start_at < now)
@@ -142,7 +143,14 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center flex-wrap" style="gap: 8px; width: 100%; sm:width: auto">
             <button class="btn btn-ghost btn-sm" @click="emit('book')">Reschedule</button>
-            <button class="btn btn-blue btn-sm"><UiIcon name="video" :size="16" /> Join</button>
+            <a
+              v-if="s.meetLink"
+              :href="s.meetLink"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-blue btn-sm"
+            ><UiIcon name="video" :size="16" /> Join</a>
+            <span v-else class="muted" style="font-size: 13px">Уулзалтын линк удахгүй ирнэ</span>
           </div>
         </div>
         <div v-if="!upcoming.length" class="muted" style="font-size: 14px; padding: 8px 0">No upcoming sessions. Book one above.</div>
