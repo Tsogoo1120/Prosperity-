@@ -21,6 +21,7 @@ const receiptFile = ref(null)
 const bookDate = ref(null)
 const bookSlot = ref(null)
 const bookingFromLanding = ref(false)
+const pendingPrefill = ref(null)
 
 const submitting = ref(false)
 const submitError = ref('')
@@ -126,6 +127,16 @@ const isSubscriber = computed(
   () => profile.value?.subscription_status === 'active',
 )
 
+const intentServiceId = computed(() => pendingPrefill.value?.serviceId ?? null)
+
+function serviceRecommendLabel(serviceId) {
+  const intent = intentServiceId.value
+  if (!intent) return null
+  if (serviceId === intent) return 'Санал болгох'
+  if (intent !== 'subscription' && serviceId === 'subscription') return 'Хөнгөлөлт авах'
+  return null
+}
+
 const discountActive = computed(
   () => isSubscriber.value && selectedService.value.id !== 'subscription',
 )
@@ -184,27 +195,29 @@ watch(
 
 function applyBookingPrefill(source) {
   if (!source?.bookDate || !source?.bookSlot) return
-  // Try to find the matching day in our dynamic availDays
   const day = availDays.value.find(d => d.iso === source.bookDate.iso)
   if (day) {
     bookDate.value = day
-    // Try to find matching slot in that day
     const slot = day.items.find(s => s.time === (source.bookSlot.time || source.bookSlot))
-    if (slot) bookSlot.value = slot
+    if (slot) {
+      bookSlot.value = slot
+      bookingFromLanding.value = true
+    }
   }
-  bookingFromLanding.value = true
 }
 
-// Watch rawSlots to re-apply prefill once slots are loaded
+// Retry prefill after rawSlots loads — at mount time slots aren't loaded yet
 watch(rawSlots, () => {
-  if (bookingFromLanding.value) return // already applied or manually picking
+  if (bookSlot.value) return // already applied
+  if (pendingPrefill.value) {
+    applyBookingPrefill(pendingPrefill.value)
+    return
+  }
   const prefillRaw = sessionStorage.getItem('union-booking-prefill')
   if (prefillRaw) {
-    try {
-      applyBookingPrefill(JSON.parse(prefillRaw))
-    } catch(e) {}
+    try { applyBookingPrefill(JSON.parse(prefillRaw)) } catch(e) {}
   }
-}, { immediate: true })
+})
 
 function applyEnrollIntent() {
   const raw = sessionStorage.getItem('union-enroll-intent')
@@ -215,7 +228,8 @@ function applyEnrollIntent() {
       const match = services.find((s) => s.id === intent.serviceId)
       if (match) selectedService.value = match
       if (intent.bookDate && intent.bookSlot) {
-        applyBookingPrefill(intent)
+        pendingPrefill.value = intent
+        applyBookingPrefill(intent) // succeeds if rawSlots already loaded, else watcher retries
       }
       if (intent.step !== undefined) step.value = intent.step
     } catch {
@@ -462,7 +476,18 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
                 <div class="flex items-center" style="gap: 10px; flex-wrap: wrap">
                   <h3 style="font-size: 17px; margin: 0">{{ s.title }}</h3>
                   <span
-                    v-if="isSubscriber && s.id !== 'subscription'"
+                    v-if="serviceRecommendLabel(s.id)"
+                    class="chip"
+                    :style="{
+                      background: serviceRecommendLabel(s.id) === 'Санал болгох' ? 'var(--clay-tint)' : 'var(--sage-tint)',
+                      color: serviceRecommendLabel(s.id) === 'Санал болгох' ? 'var(--clay-deep)' : 'var(--sage-deep)',
+                      fontSize: '11.5px',
+                    }"
+                  >
+                    {{ serviceRecommendLabel(s.id) }}
+                  </span>
+                  <span
+                    v-else-if="isSubscriber && s.id !== 'subscription'"
                     class="chip"
                     style="background: var(--sage-tint); color: var(--sage-deep); font-size: 11.5px"
                   >

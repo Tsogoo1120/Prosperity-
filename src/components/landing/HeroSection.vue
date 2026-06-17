@@ -18,6 +18,7 @@ const emit = defineEmits(["nav"]);
 const bookDate = ref(null);
 const bookSlot = ref(null);
 const pickerOpen = ref(false);
+const navigating = ref(false);
 
 const rawSlots = ref([]);
 
@@ -114,6 +115,7 @@ function onPrimaryClick() {
     openPicker();
     return;
   }
+  navigating.value = true;
   goEnrollPayment();
 }
 </script>
@@ -136,8 +138,10 @@ function onPrimaryClick() {
         </p>
 
         <div class="hero-actions rise d3 btn-row btn-row--stack-mobile">
-          <button class="btn btn-primary btn-lg" @click="onPrimaryClick">
-            <UiIcon name="calendar" :size="19" /> Хувийн уншлага цаг захиалах
+          <button class="btn btn-primary btn-lg" :disabled="navigating" @click="onPrimaryClick">
+            <UiIcon v-if="navigating" name="clock" :size="19" style="animation: spin 1s linear infinite" />
+            <UiIcon v-else name="calendar" :size="19" />
+            {{ navigating ? 'Уншиж байна…' : hasBooking ? 'Бүртгэлд үргэлжлэх' : 'Хувийн уншлага цаг захиалах' }}
           </button>
 
           <button class="btn btn-ghost btn-lg" @click="emit('nav', 'enroll')">
@@ -253,9 +257,9 @@ function onPrimaryClick() {
               type="button"
               class="btn btn-primary"
               :disabled="!hasBooking"
-              @click="confirmPicker"
+              @click="navigating = true; goEnrollPayment()"
             >
-              Болсон
+              Бүртгэлд орох
             </button>
           </div>
         </div>
@@ -548,6 +552,10 @@ function onPrimaryClick() {
   background: var(--clay);
 
   color: #fff;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .hero-booking-summary {
