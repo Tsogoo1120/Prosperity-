@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
+import { timeAgo } from '@/utils/time.js'
 
 const posts = ref([])
 const loading = ref(true)
@@ -51,17 +52,6 @@ async function toggleComment(comment) {
   if (!error) comment.is_hidden = next
 }
 
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'Just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d ago`
-  return new Date(dateStr).toLocaleDateString()
-}
 </script>
 
 <template>

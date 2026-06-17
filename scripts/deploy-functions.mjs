@@ -1,15 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { loadEnv } from './env.mjs'
 
-const env = Object.fromEntries(
-  readFileSync('.env', 'utf8')
-    .split('\n')
-    .filter((line) => line && !line.startsWith('#'))
-    .map((line) => {
-      const i = line.indexOf('=')
-      return [line.slice(0, i).trim(), line.slice(i + 1).trim()]
-    }),
-)
+const env = loadEnv()
 
 const projectRef = 'gtewmyhzpuwzmkdtgink'
 

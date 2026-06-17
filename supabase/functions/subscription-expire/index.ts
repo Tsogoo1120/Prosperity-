@@ -4,29 +4,11 @@
 // Recommended schedule: daily at 00:00 UTC.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { subscriptionExpiredTemplate } from '../_shared/templates.ts'
+import { sendOne, SITE_URL } from '../_shared/resend.ts'
+import { requireCronAuth } from '../_shared/auth.ts'
 
-const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
-const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'Union <hello@union.mn>'
-const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://union.mn'
 const SB_URL = Deno.env.get('SUPABASE_URL')!
 const SB_SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const CRON_SECRET = Deno.env.get('CRON_SECRET')
-
-async function sendOne(to: string, subject: string, html: string, text: string): Promise<void> {
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html, text }),
-    })
-    if (!res.ok) console.error('[sub-expire] Resend error:', await res.text())
-  } catch (err) {
-    console.error('[sub-expire] fetch failed:', err)
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,10 +17,8 @@ Deno.serve(async (req) => {
     })
   }
 
-  const auth = req.headers.get('Authorization')
-  if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 })
-  }
+  const authErr = requireCronAuth(req)
+  if (authErr) return authErr
 
   const admin = createClient(SB_URL, SB_SERVICE)
   const nowIso = new Date().toISOString()
@@ -85,7 +65,7 @@ Deno.serve(async (req) => {
     if (!p.email) continue
     try {
       const tpl = subscriptionExpiredTemplate({ fullName: p.full_name, siteUrl: SITE_URL })
-      await sendOne(p.email, tpl.subject, tpl.html, tpl.text)
+      await sendOne(p.email, tpl.subject, tpl.html, tpl.text, 'sub-expire')
       emailed++
     } catch (err) {
       emailErrors++

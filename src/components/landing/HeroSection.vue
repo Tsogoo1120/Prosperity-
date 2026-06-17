@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { formatBookingSummary } from "@/data/booking-calendar.js";
 import { supabase } from "@/lib/supabase.js";
+import { useAvailableSlots } from "@/composables/useAvailableSlots.js";
 
 import UiIcon from "@/components/common/UiIcon.vue";
 
@@ -20,44 +21,12 @@ const bookSlot = ref(null);
 const pickerOpen = ref(false);
 const navigating = ref(false);
 
-const rawSlots = ref([]);
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const dayMap = computed(() => {
-  const map = {};
-  for (const s of rawSlots.value) {
-    const iso = s.start_at.slice(0, 10);
-    if (!map[iso]) {
-      const d = new Date(s.start_at);
-      map[iso] = { iso, d: DAY_NAMES[d.getDay()], n: d.getDate(), items: [] };
-    }
-    const d = new Date(s.start_at);
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    map[iso].items.push({ id: s.id, time: `${hh}:${mm}`, serviceType: s.service_type });
-  }
-  return map;
-});
-
-const availDays = computed(() => Object.values(dayMap.value));
+const { rawSlots, dayMap, availDays, loadAvailableSlots } = useAvailableSlots();
 
 const currentSlots = computed(() => {
   if (!bookDate.value?.iso) return [];
   return dayMap.value[bookDate.value.iso]?.items ?? [];
 });
-
-async function loadAvailableSlots() {
-  const now = new Date().toISOString();
-  const { data } = await supabase
-    .from('coaching_slots')
-    .select('id, start_at, end_at, service_type')
-    .eq('status', 'available')
-    .is('user_id', null)
-    .gte('start_at', now)
-    .order('start_at', { ascending: true });
-  rawSlots.value = data ?? [];
-}
 
 watch(availDays, (days) => {
   if (days.length && !bookDate.value) bookDate.value = days[0];

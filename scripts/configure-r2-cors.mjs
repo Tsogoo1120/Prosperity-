@@ -1,5 +1,6 @@
 import { S3Client, PutBucketCorsCommand, HeadBucketCommand } from '@aws-sdk/client-s3'
-import { readFileSync, appendFileSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
+import { loadEnv } from './env.mjs'
 
 const LOG_PATH = 'debug-b8d68b.log'
 const SESSION_ID = 'b8d68b'
@@ -24,15 +25,7 @@ function debugLog(location, message, data, hypothesisId) {
   }).catch(() => {})
 }
 
-const env = Object.fromEntries(
-  readFileSync('.env', 'utf8')
-    .split('\n')
-    .filter((line) => line.trim() && !line.startsWith('#'))
-    .map((line) => {
-      const i = line.indexOf('=')
-      return [line.slice(0, i).trim(), line.slice(i + 1).trim()]
-    }),
-)
+const env = loadEnv()
 
 const productionOrigins = [
   'https://www.tsogoo.site',

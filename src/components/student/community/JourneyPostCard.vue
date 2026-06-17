@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
+import { timeAgo } from '@/utils/time.js'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -16,17 +17,6 @@ const draft = ref('')
 const authorName = computed(() => props.post.profiles?.full_name ?? 'Member')
 const commentCount = computed(() => props.post.comments?.length ?? 0)
 
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'Just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d ago`
-  return new Date(dateStr).toLocaleDateString()
-}
 
 function toggleComments() {
   showComments.value = !showComments.value

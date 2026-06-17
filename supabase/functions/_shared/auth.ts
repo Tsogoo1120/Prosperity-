@@ -59,6 +59,14 @@ export function canAccessSubscriberContent(profile: Profile | null): boolean {
   return false
 }
 
+export function requireCronAuth(req: Request): Response | null {
+  const secret = Deno.env.get('CRON_SECRET')
+  if (!secret || req.headers.get('Authorization') !== `Bearer ${secret}`) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+  return null
+}
+
 export async function requireUser(req: Request): Promise<
   | { ok: true; user: User; userClient: SupabaseClient; admin: SupabaseClient }
   | { ok: false; response: Response }

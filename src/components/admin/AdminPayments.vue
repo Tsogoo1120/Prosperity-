@@ -86,6 +86,17 @@ const enrollmentRows = computed(() => {
   ]
 })
 
+async function setPaymentStatus(id, status) {
+  return supabase
+    .from('payments')
+    .update({
+      status,
+      reviewed_by: session.value.user.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+}
+
 async function approvePayment() {
   if (!sel.value || !session.value) return
   acting.value = true
@@ -94,15 +105,7 @@ async function approvePayment() {
   const payment = sel.value
   const userId = payment.user_id
 
-  // Update payment row
-  const { error: payErr } = await supabase
-    .from('payments')
-    .update({
-      status: 'approved',
-      reviewed_by: session.value.user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', payment.id)
+  const { error: payErr } = await setPaymentStatus(payment.id, 'approved')
 
   if (payErr) {
     actError.value = 'Алдаа: ' + payErr.message
@@ -147,14 +150,7 @@ async function denyPayment() {
 
   const payment = sel.value
 
-  const { error: payErr } = await supabase
-    .from('payments')
-    .update({
-      status: 'denied',
-      reviewed_by: session.value.user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', payment.id)
+  const { error: payErr } = await setPaymentStatus(payment.id, 'denied')
 
   if (payErr) {
     actError.value = 'Алдаа: ' + payErr.message

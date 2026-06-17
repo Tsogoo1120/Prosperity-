@@ -8,33 +8,24 @@ import {
   paymentReceivedTemplate,
   welcomeTemplate,
 } from '../_shared/templates.ts'
+import { sendOne, SITE_URL } from '../_shared/resend.ts'
+import { CORS } from '../_shared/auth.ts'
 
-const RESEND_KEY = Deno.env.get('RESEND_API_KEY')!
-const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'Union <hello@union.mn>'
-const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://union.mn'
 const SB_URL = Deno.env.get('SUPABASE_URL')!
 const SB_ANON = Deno.env.get('SUPABASE_ANON_KEY')!
 const SB_SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-async function sendOne(to: string, subject: string, html: string, text: string): Promise<void> {
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html, text }),
-    })
-    if (!res.ok) console.error('[send-email] Resend error:', await res.text())
-  } catch (err) {
-    console.error('[send-email] fetch failed:', err)
-  }
+async function requireAdmin(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<Response | null> {
+  const { data: caller } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single()
+  if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
+  return null
 }
 
 Deno.serve(async (req) => {
@@ -74,7 +65,7 @@ Deno.serve(async (req) => {
           .single()
         if (!profile?.email) break
         const tpl = welcomeTemplate({ fullName: profile.full_name, siteUrl: SITE_URL })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
@@ -98,7 +89,7 @@ Deno.serve(async (req) => {
           amount: Number(amount),
           currency: String(currency),
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
@@ -124,7 +115,7 @@ Deno.serve(async (req) => {
           siteUrl: SITE_URL,
         })
         await Promise.allSettled(
-          adminEmails.map((to) => sendOne(to, tpl.subject, tpl.html, tpl.text)),
+          adminEmails.map((to) => sendOne(to, tpl.subject, tpl.html, tpl.text, 'send-email')),
         )
         break
       }
@@ -132,12 +123,8 @@ Deno.serve(async (req) => {
       // ── Admin actions — require admin role ────────────────────────────────
       case 'payment_approved': {
         const { userId } = body as { userId: string }
-        const { data: caller } = await admin
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
         const { data: profile } = await admin
           .from('profiles')
           .select('email, full_name, subscription_expires_at')
@@ -149,18 +136,14 @@ Deno.serve(async (req) => {
           siteUrl: SITE_URL,
           expiresAt: profile.subscription_expires_at,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
       case 'payment_denied': {
         const { userId, adminNote } = body as { userId: string; adminNote: string | null }
-        const { data: caller } = await admin
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
         const { data: profile } = await admin
           .from('profiles')
           .select('email, full_name')
@@ -172,18 +155,14 @@ Deno.serve(async (req) => {
           siteUrl: SITE_URL,
           adminNote: adminNote ?? null,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
       case 'coaching_approved': {
         const { slotId, adminNote } = body as { slotId: string; adminNote: string | null }
-        const { data: caller } = await admin
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
         const { data: slot } = await admin
           .from('coaching_slots')
           .select('user_id, start_at, end_at, meet_link')
@@ -204,18 +183,14 @@ Deno.serve(async (req) => {
           adminNote: adminNote ?? null,
           meetLink: (slot as any).meet_link ?? null,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
       case 'coaching_denied': {
         const { slotId, adminNote } = body as { slotId: string; adminNote: string | null }
-        const { data: caller } = await admin
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
         const { data: slot } = await admin
           .from('coaching_slots')
           .select('user_id, start_at')
@@ -234,7 +209,7 @@ Deno.serve(async (req) => {
           slotStartAt: slot.start_at,
           adminNote: adminNote ?? null,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text)
+        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
