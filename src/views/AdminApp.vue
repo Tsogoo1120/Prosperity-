@@ -11,6 +11,7 @@ import AdminPayments from '@/components/admin/AdminPayments.vue'
 import AdminVideos from '@/components/admin/AdminVideos.vue'
 import AdminTests from '@/components/admin/AdminTests.vue'
 import AdminCommunity from '@/components/admin/AdminCommunity.vue'
+import AdminMembers from '@/components/admin/AdminMembers.vue'
 
 const emit = defineEmits(['nav'])
 
@@ -48,6 +49,7 @@ const heads = {
   videos: ['Видео хичээлүүд', 'Хичээл нэмэх, засварлах, нийтлэх.'],
   tests: ['Сэтгэл зүйн тестүүд', 'Тест нэмэх, асуулт засварлах, нийтлэх.'],
   community: ['Community', 'Moderate posts and comments from members.'],
+  members: ['Members', 'View subscribers and extend their access.'],
 }
 </script>
 
@@ -76,6 +78,7 @@ const heads = {
       <AdminVideos v-else-if="view === 'videos'" />
       <AdminTests v-else-if="view === 'tests'" />
       <AdminCommunity v-else-if="view === 'community'" />
+      <AdminMembers v-else-if="view === 'members'" />
     </div>
   </div>
 </template>
