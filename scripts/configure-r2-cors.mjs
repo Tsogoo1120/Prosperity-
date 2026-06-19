@@ -18,11 +18,6 @@ function debugLog(location, message, data, hypothesisId) {
   try {
     appendFileSync(LOG_PATH, entry + '\n')
   } catch { /* ignore */ }
-  fetch('http://127.0.0.1:7686/ingest/90f54ecd-c6e4-49a7-aa05-6b179f41c50d', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': SESSION_ID },
-    body: entry,
-  }).catch(() => {})
 }
 
 const env = loadEnv()
