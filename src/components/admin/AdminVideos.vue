@@ -51,8 +51,11 @@ async function saveIntroVideo() {
   if (!introVideoFile.value) return
   introSaving.value = true
   introError.value = ''
-  introStatus.value = 'Видео байршуулж байна…'
-  const r = await uploadIntroVideoToStorage(introVideoFile.value)
+  introStatus.value = 'Видео байршуулж байна… 0%'
+  const token = session.value?.access_token
+  const r = await uploadIntroVideoToStorage(introVideoFile.value, token, (p) => {
+    introStatus.value = `Видео байршуулж байна… ${Math.round(p * 100)}%`
+  })
   if (r.error) {
     introError.value = r.error
     introSaving.value = false

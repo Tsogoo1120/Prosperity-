@@ -1,5 +1,13 @@
 import { CORS, isUserAdmin, json, requireUser } from '../_shared/auth.ts'
 
+// Base64-encode a UTF-8 string for use in tus Upload-Metadata values.
+function b64utf8(s: string): string {
+  const bytes = new TextEncoder().encode(s)
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
 // Admin-only. Requests a Cloudflare Stream direct creator upload URL.
 // Client then POSTs the video file as multipart/form-data to the returned uploadURL.
 // Returns the eventual Stream video UID immediately (resolved by Cloudflare).
@@ -27,7 +35,7 @@ Deno.serve(async (req) => {
   const accountId = Deno.env.get('CLOUDFLARE_ACCOUNT_ID')
   if (!token || !accountId) return json({ error: 'stream_not_configured' }, 500)
 
-  let body: { filename?: string; variant?: string; maxDurationSeconds?: number }
+  let body: { filename?: string; variant?: string; size?: number; maxDurationSeconds?: number }
   try {
     body = await req.json()
   } catch {
@@ -37,41 +45,45 @@ Deno.serve(async (req) => {
   const { filename, variant = 'desktop' } = body
   if (!['desktop', 'vertical'].includes(variant)) return json({ error: 'invalid_variant' }, 400)
 
+  // tus requires the total size up front (Upload-Length).
+  const size = Number(body.size)
+  if (!Number.isFinite(size) || size <= 0) return json({ error: 'missing_size' }, 400)
+
   const maxDuration =
     Number(body.maxDurationSeconds) ||
     Number(Deno.env.get('STREAM_MAX_DURATION_SECONDS') ?? '7200')
 
+  // Create a resumable (tus) direct creator upload. The single-POST direct
+  // upload is capped at 200 MB by Cloudflare; tus has no such limit. The
+  // one-time upload URL is returned in the Location header and the eventual
+  // video UID in the stream-media-id header.
+  const uploadMetadata = [
+    `maxDurationSeconds ${b64utf8(String(maxDuration))}`,
+    `name ${b64utf8(filename ?? 'lesson')}`,
+  ].join(',')
+
   const cfRes = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/direct_upload`,
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream?direct_user=true`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        'Tus-Resumable': '1.0.0',
+        'Upload-Length': String(size),
+        'Upload-Metadata': uploadMetadata,
       },
-      body: JSON.stringify({
-        maxDurationSeconds: maxDuration,
-        requireSignedURLs: false,
-        meta: {
-          name: filename ?? 'lesson',
-          variant,
-          uploadedBy: user.id,
-        },
-      }),
     },
   )
 
-  const data = await cfRes.json().catch(() => ({} as Record<string, unknown>))
-  if (!cfRes.ok || !data?.success) {
-    console.error('[stream-upload-url] cf api failed', cfRes.status, data)
-    const msg = (data as { errors?: { message?: string }[] })?.errors?.[0]?.message ?? 'stream_api_failed'
-    return json({ error: msg }, 500)
+  if (!cfRes.ok) {
+    const errText = await cfRes.text().catch(() => '')
+    console.error('[stream-upload-url] cf tus create failed', cfRes.status, errText)
+    return json({ error: 'stream_api_failed' }, 500)
   }
 
-  const result = (data as { result?: { uploadURL?: string; uid?: string } }).result ?? {}
-  if (!result.uploadURL || !result.uid) {
-    return json({ error: 'stream_api_invalid_response' }, 500)
-  }
+  const uploadURL = cfRes.headers.get('Location')
+  const uid = cfRes.headers.get('stream-media-id')
+  if (!uploadURL || !uid) return json({ error: 'stream_api_invalid_response' }, 500)
 
-  return json({ uploadURL: result.uploadURL, uid: result.uid })
+  return json({ uploadURL, uid })
 })

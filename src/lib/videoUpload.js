@@ -1,3 +1,4 @@
+import * as tus from 'tus-js-client'
 import { supabase } from '@/lib/supabase.js'
 
 const THUMBNAILS_BUCKET = 'media-thumbnails'
@@ -41,13 +42,39 @@ export async function uploadPublicImage(file, prefix = 'reading') {
   return { path }
 }
 
-export async function uploadIntroVideoToStorage(file) {
+export async function uploadIntroVideoToStorage(file, token, onProgress) {
   const ext = (file.name.split('.').pop() ?? 'mp4').toLowerCase()
   const path = `intro-${Date.now()}.${ext}`
-  const { error } = await supabase.storage
-    .from(INTRO_BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: true })
-  if (error) return { error: error.message }
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
+  if (!url) return { error: 'supabase_url_missing' }
+
+  // Resumable (tus) upload — required for large intro videos. supabase-js
+  // .upload() buffers the whole file in one request, which fails on 1 GB.
+  try {
+    await new Promise((resolve, reject) => {
+      const upload = new tus.Upload(file, {
+        endpoint: `${url}/storage/v1/upload/resumable`,
+        retryDelays: [0, 3000, 5000, 10000, 20000],
+        headers: { authorization: `Bearer ${token}`, apikey: anon, 'x-upsert': 'true' },
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        chunkSize: 6 * 1024 * 1024, // Supabase resumable requires exactly 6 MB chunks
+        metadata: {
+          bucketName: INTRO_BUCKET,
+          objectName: path,
+          contentType: file.type || 'video/mp4',
+          cacheControl: '3600',
+        },
+        onProgress: (sent, total) => { if (onProgress) onProgress(sent / total) },
+        onSuccess: () => resolve(),
+        onError: (err) => reject(err),
+      })
+      upload.start()
+    })
+  } catch (err) {
+    return { error: err?.message ?? 'intro upload failed' }
+  }
   return { path }
 }
 
@@ -92,7 +119,7 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
 
 export async function uploadVideoToCloudflareStream(file, variant, token, onProgress) {
   const { data, error } = await supabase.functions.invoke('stream-upload-url', {
-    body: { filename: file.name, variant },
+    body: { filename: file.name, variant, size: file.size },
     headers: { Authorization: `Bearer ${token}` },
   })
   let contextBody = null
@@ -106,28 +133,21 @@ export async function uploadVideoToCloudflareStream(file, variant, token, onProg
   if (data?.error) return { error: data.error }
   if (!data?.uploadURL || !data?.uid) return { error: 'stream_presign_failed' }
 
-  const form = new FormData()
-  form.append('file', file)
-
+  // Resumable (tus) upload to the Cloudflare-provided one-time URL. tus is
+  // required above Cloudflare's 200 MB single-POST cap.
   try {
-    if (typeof XMLHttpRequest !== 'undefined' && onProgress) {
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', data.uploadURL)
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) onProgress(e.loaded / e.total)
-        }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`Stream upload failed: ${xhr.status}`))
-        }
-        xhr.onerror = () => reject(new Error('Stream upload failed: network'))
-        xhr.send(form)
+    await new Promise((resolve, reject) => {
+      const upload = new tus.Upload(file, {
+        uploadUrl: data.uploadURL, // CF returned a pre-created tus resource
+        chunkSize: 52428800, // 50 MiB — must be a multiple of 256 KiB (Cloudflare requirement)
+        retryDelays: [0, 3000, 5000, 10000, 20000],
+        metadata: { name: file.name, filetype: file.type || 'video/mp4' },
+        onProgress: (sent, total) => { if (onProgress) onProgress(sent / total) },
+        onSuccess: () => resolve(),
+        onError: (err) => reject(err),
       })
-    } else {
-      const res = await fetch(data.uploadURL, { method: 'POST', body: form })
-      if (!res.ok) return { error: `Stream upload failed: ${res.status}` }
-    }
+      upload.start()
+    })
   } catch (err) {
     return { error: err?.message ?? 'Stream upload failed' }
   }
