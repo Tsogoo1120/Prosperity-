@@ -13,7 +13,6 @@ const props = defineProps({
 const emit = defineEmits(['approve', 'deny'])
 
 const screenshotUrls = reactive({})
-const meetLinkInputs = reactive({})
 
 watch(() => props.slots, (slots) => {
   for (const slot of slots) {
@@ -23,7 +22,6 @@ watch(() => props.slots, (slots) => {
         .createSignedUrl(slot.payment_screenshot_path, 3600)
         .then(({ data: u }) => { if (u?.signedUrl) screenshotUrls[slot.id] = u.signedUrl })
     }
-    if (meetLinkInputs[slot.id] === undefined) meetLinkInputs[slot.id] = ''
   }
 }, { immediate: true })
 
@@ -98,14 +96,9 @@ function fmtDt(iso) {
                 Төлбөрийн баримт байхгүй
               </div>
 
-              <div>
-                <label style="font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 5px">Google Meet линк (батлахад илгээнэ)</label>
-                <input
-                  v-model="meetLinkInputs[slot.id]"
-                  class="input"
-                  placeholder="https://meet.google.com/xxx-xxxx-xxx"
-                  style="font-size: 13px"
-                />
+              <div style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px">
+                <UiIcon name="check" :size="14" style="color: var(--good)" />
+                Батлахад Google Meet линк автоматаар үүсч имэйлээр илгээгдэнэ.
               </div>
 
               <div class="flex items-center" style="gap: 8px">
@@ -121,7 +114,7 @@ function fmtDt(iso) {
                   class="btn btn-sm"
                   style="background: var(--good); color: #fff"
                   :disabled="actingSlotId === slot.id"
-                  @click="emit('approve', { slot, meetLink: (meetLinkInputs[slot.id] ?? '').trim() || null })"
+                  @click="emit('approve', { slot })"
                 >
                   <UiIcon name="check" :size="16" />
                   {{ actingSlotId === slot.id ? 'Уншиж байна…' : 'Батлах' }}

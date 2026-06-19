@@ -78,14 +78,19 @@ function nextWeek() {
   loadSlots()
 }
 
-async function approveSlot({ slot, meetLink }) {
+async function approveSlot({ slot }) {
   actingSlotId.value = slot.id
   actErr.value = ''
-  const { error } = await supabase
-    .from('coaching_slots')
-    .update({ status: 'booked', meet_link: meetLink })
-    .eq('id', slot.id)
-  if (error) { actErr.value = error.message; actingSlotId.value = null; return }
+  // Mint a Google Meet link (creates a Calendar event on the coach's calendar)
+  // and mark the slot booked — all server-side.
+  const { data, error } = await supabase.functions
+    .invoke('coaching-create-meet', { body: { slotId: slot.id } })
+  if (error || !data?.ok) {
+    actErr.value = data?.detail || error?.message || 'Google Meet линк үүсгэхэд алдаа гарлаа.'
+    actingSlotId.value = null
+    return
+  }
+  // Send the branded approval email (reads meet_link back from the slot).
   supabase.functions
     .invoke('send-email', { body: { type: 'coaching_approved', slotId: slot.id, adminNote: null } })
     .catch(() => {})
