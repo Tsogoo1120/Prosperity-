@@ -25,6 +25,22 @@ export async function uploadThumbnailToStorage(file, slug) {
   return { path }
 }
 
+export function getPublicImageUrl(path) {
+  if (!path) return null
+  const { data } = supabase.storage.from(INTRO_BUCKET).getPublicUrl(path)
+  return data?.publicUrl ?? null
+}
+
+export async function uploadPublicImage(file, prefix = 'reading') {
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+  const path = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error } = await supabase.storage
+    .from(INTRO_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: true })
+  if (error) return { error: error.message }
+  return { path }
+}
+
 export async function uploadIntroVideoToStorage(file) {
   const ext = (file.name.split('.').pop() ?? 'mp4').toLowerCase()
   const path = `intro-${Date.now()}.${ext}`

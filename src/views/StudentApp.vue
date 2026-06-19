@@ -49,7 +49,7 @@ const titles = computed(() => ({
   assess: ['Assessments', 'Honest mirrors for where you are right now.'],
   challenge: ['31-Day Growth Challenge', 'A daily practice in becoming.'],
   sessions: ['My sessions', 'One-on-one mentorship and consultations.'],
-  community: ['Community', 'Share your journey and support others — vlog-style.'],
+  community: ['Community', 'Choose your collective reading and share your journey.'],
 }))
 const title = computed(() => (titles.value[view.value] || ['', null])[0])
 const sub = computed(() => (titles.value[view.value] || ['', null])[1])

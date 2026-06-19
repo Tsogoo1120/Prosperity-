@@ -48,7 +48,7 @@ const heads = {
   payments: ['Payments', 'Verify receipts and approve enrollments.'],
   videos: ['Видео хичээлүүд', 'Хичээл нэмэх, засварлах, нийтлэх.'],
   tests: ['Сэтгэл зүйн тестүүд', 'Тест нэмэх, асуулт засварлах, нийтлэх.'],
-  community: ['Community', 'Moderate posts and comments from members.'],
+  community: ['Community', 'Publish collective readings and moderate member posts.'],
   members: ['Members', 'View subscribers and extend their access.'],
 }
 </script>

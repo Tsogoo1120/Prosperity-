@@ -6,8 +6,15 @@ import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
 import JourneyPostCard from '@/components/student/community/JourneyPostCard.vue'
 import JourneyComposer from '@/components/student/community/JourneyComposer.vue'
+import CollectiveReading from '@/components/student/community/CollectiveReading.vue'
 
 const { session, profile } = useAuth()
+
+const tab = ref('reading')
+const tabs = [
+  ['reading', 'Collective reading', 'spark'],
+  ['community', 'Community', 'users'],
+]
 
 const posts = ref([])
 const loading = ref(true)
@@ -72,6 +79,37 @@ const currentUser = computed(() => ({
 <template>
   <div class="scroll-y" style="flex: 1; height: calc(100vh - 73px); overflow-y: auto">
     <div class="page-inset-narrow" style="max-width: 680px">
+      <!-- Section tabs -->
+      <div class="flex" style="gap: 6px; margin-bottom: 22px; background: var(--surface-2); padding: 5px; border-radius: 12px">
+        <button
+          v-for="[id, label, ic] in tabs"
+          :key="id"
+          class="flex items-center justify-center"
+          :style="{
+            flex: 1,
+            gap: '7px',
+            padding: '9px 12px',
+            borderRadius: '9px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: tab === id ? 600 : 500,
+            background: tab === id ? 'var(--card)' : 'transparent',
+            color: tab === id ? 'var(--ink)' : 'var(--ink-soft)',
+            boxShadow: tab === id ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+            transition: 'background .15s, color .15s',
+          }"
+          @click="tab = id"
+        >
+          <UiIcon :name="ic" :size="16" /> {{ label }}
+        </button>
+      </div>
+
+      <!-- Collective reading -->
+      <CollectiveReading v-if="tab === 'reading'" />
+
+      <!-- Community feed -->
+      <template v-else>
       <!-- Community banner -->
       <div
         class="card rise"
@@ -151,6 +189,7 @@ const currentUser = computed(() => ({
           <UiIcon name="pen" :size="16" /> Share your journey
         </button>
       </div>
+      </template>
     </div>
 
     <JourneyComposer
