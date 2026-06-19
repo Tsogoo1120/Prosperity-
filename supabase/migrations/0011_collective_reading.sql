@@ -18,10 +18,12 @@ CREATE TABLE IF NOT EXISTS public.collective_readings (
 
 ALTER TABLE public.collective_readings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "collective_readings_select_published" ON public.collective_readings;
 CREATE POLICY "collective_readings_select_published"
   ON public.collective_readings FOR SELECT
   USING (is_published = true OR is_admin());
 
+DROP POLICY IF EXISTS "collective_readings_admin_all" ON public.collective_readings;
 CREATE POLICY "collective_readings_admin_all"
   ON public.collective_readings FOR ALL
   USING (is_admin()) WITH CHECK (is_admin());
@@ -42,10 +44,12 @@ CREATE TABLE IF NOT EXISTS public.reading_piles (
 
 ALTER TABLE public.reading_piles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "reading_piles_select_auth" ON public.reading_piles;
 CREATE POLICY "reading_piles_select_auth"
   ON public.reading_piles FOR SELECT
   USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "reading_piles_admin_all" ON public.reading_piles;
 CREATE POLICY "reading_piles_admin_all"
   ON public.reading_piles FOR ALL
   USING (is_admin()) WITH CHECK (is_admin());
@@ -64,14 +68,17 @@ CREATE TABLE IF NOT EXISTS public.reading_picks (
 
 ALTER TABLE public.reading_picks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "reading_picks_select_own" ON public.reading_picks;
 CREATE POLICY "reading_picks_select_own"
   ON public.reading_picks FOR SELECT
   USING (auth.uid() = user_id OR is_admin());
 
+DROP POLICY IF EXISTS "reading_picks_insert_own" ON public.reading_picks;
 CREATE POLICY "reading_picks_insert_own"
   ON public.reading_picks FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "reading_picks_update_own" ON public.reading_picks;
 CREATE POLICY "reading_picks_update_own"
   ON public.reading_picks FOR UPDATE
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
