@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { services } from '@/data/union.js'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
@@ -153,9 +153,10 @@ const continueDisabled = computed(() => {
   if (stepType.value === 'plan')
     return selectedService.value.id === 'tarot' && !selectedTarotOption.value
   if (stepType.value === 'account')
-    return !googleConnected.value || !form.value.phone
+    return !googleConnected.value
   if (stepType.value === 'booking') return !bookDate.value || !bookSlot.value
-  if (stepType.value === 'payment') return !uploaded.value
+  if (stepType.value === 'payment')
+    return !uploaded.value || !form.value.name || !form.value.phone
   return false
 })
 
@@ -172,7 +173,11 @@ function selectService(s) {
   }
 }
 
+// Skip the reset while we're restoring a saved intent (e.g. after OAuth),
+// otherwise the restored step would be clobbered back to 0.
+let restoringIntent = false
 watch(selectedService, () => {
+  if (restoringIntent) return
   if (step.value > 0) step.value = 0
 })
 
@@ -225,14 +230,23 @@ function applyEnrollIntent() {
     sessionStorage.removeItem('union-enroll-intent')
     try {
       const intent = JSON.parse(raw)
+      restoringIntent = true
       const match = services.find((s) => s.id === intent.serviceId)
       if (match) selectedService.value = match
+      // Restore reading-type (tarot) sub-option so reading vs coaching survives login
+      if (intent.tarotOptionId && match?.tarotOptions) {
+        const opt = match.tarotOptions.find((o) => o.id === intent.tarotOptionId)
+        if (opt) selectedTarotOption.value = opt
+      }
       if (intent.bookDate && intent.bookSlot) {
         pendingPrefill.value = intent
         applyBookingPrefill(intent) // succeeds if rawSlots already loaded, else watcher retries
       }
       if (intent.step !== undefined) step.value = intent.step
+      // Let the selectedService watcher settle without resetting the restored step
+      nextTick(() => { restoringIntent = false })
     } catch {
+      restoringIntent = false
       /* ignore malformed intent */
     }
   }
@@ -247,11 +261,20 @@ onMounted(() => {
 // ── Auth actions ──────────────────────────────────────────────────────────────
 
 function connectGoogle() {
-  // Save current state so App.vue can restore it after OAuth redirect
-  sessionStorage.setItem(
-    'union-post-oauth',
-    JSON.stringify({ serviceId: selectedService.value.id, step: step.value }),
-  )
+  // Save current state so App.vue can restore it after the OAuth redirect.
+  // Include the selected slot + reading type so the user isn't sent back to
+  // re-pick a slot they already chose on the landing page.
+  const intent = { serviceId: selectedService.value.id, step: step.value }
+  if (bookDate.value && bookSlot.value) {
+    intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso }
+    intent.bookSlot = { id: bookSlot.value.id, time: bookSlot.value.time }
+  } else if (pendingPrefill.value?.bookDate && pendingPrefill.value?.bookSlot) {
+    // Slot chosen on landing but not yet re-applied (slots still loading)
+    intent.bookDate = pendingPrefill.value.bookDate
+    intent.bookSlot = pendingPrefill.value.bookSlot
+  }
+  if (selectedTarotOption.value) intent.tarotOptionId = selectedTarotOption.value.id
+  sessionStorage.setItem('union-post-oauth', JSON.stringify(intent))
   signInWithGoogle()
 }
 
@@ -273,6 +296,9 @@ async function submitPayment() {
     submitting.value = false
     return
   }
+
+  // Persist contact details collected on this step (moved here from account step)
+  await saveAccountProfile()
 
   const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
   const path = `${userId}/${Date.now()}-${crypto.randomUUID()}.${ext}`
@@ -351,10 +377,7 @@ async function submitPayment() {
 // ── Main continue handler ─────────────────────────────────────────────────────
 
 async function handleContinue() {
-  if (stepType.value === 'account') {
-    await saveAccountProfile()
-    rawNext()
-  } else if (stepType.value === 'payment') {
+  if (stepType.value === 'payment') {
     await submitPayment()
   } else {
     rawNext()
@@ -622,7 +645,7 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
       <div v-else-if="stepType === 'account'" class="rise enroll-step-content enroll-step-content--narrow">
         <h2 class="enroll-step-title">Бүртгэл үүсгэх</h2>
         <p class="enroll-step-lead muted">
-          Таны мэдээлэл болон явц энд хадгалагдана.
+          Үргэлжлүүлэхийн тулд Google-ээр нэвтэрнэ үү. Таны явц хадгалагдана.
         </p>
 
         <!-- Google connect -->
@@ -658,25 +681,10 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
         <div
           v-if="googleConnected"
           class="flex items-start"
-          style="gap: 7px; margin-bottom: 14px; font-size: 13px; color: var(--muted); background: var(--surface); border-radius: 10px; padding: 10px 14px"
+          style="gap: 7px; margin-bottom: 14px; font-size: 13px; color: var(--good); background: var(--good-tint); border-radius: 10px; padding: 10px 14px"
         >
-          <UiIcon name="shield" :size="15" style="color: var(--warn); flex: none; margin-top: 1px" />
-          Google-ээр нэвтэрсэн ч доорх талбаруудыг бөглөх шаардлагатай.
-        </div>
-
-        <div class="card card-pad" style="border-radius: 16px; display: flex; flex-direction: column; gap: 16px">
-          <div class="field">
-            <label>Нэр <span style="color: var(--clay)">*</span></label>
-            <input v-model="form.name" class="input" placeholder="Таны нэр" :disabled="!googleConnected" />
-          </div>
-          <div class="field">
-            <label>Утасны дугаар <span style="color: var(--clay)">*</span></label>
-            <input v-model="form.phone" class="input" type="tel" placeholder="+976 ···· ····" :disabled="!googleConnected" />
-          </div>
-          <div class="field">
-            <label>И-мэйл</label>
-            <input :value="form.email || session?.user?.email || ''" class="input" type="email" disabled style="opacity: 0.6" />
-          </div>
+          <UiIcon name="checkCircle" :size="15" style="color: var(--good); flex: none; margin-top: 1px" />
+          Google холбогдлоо. Үргэлжлүүлээд нэр, утас, төлбөрийн мэдээллээ оруулна уу.
         </div>
       </div>
 
@@ -797,6 +805,26 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
         </div>
 
         <div>
+          <!-- Contact details (moved here from the account step) -->
+          <div class="card card-pad" style="border-radius: 16px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px">
+            <div class="flex items-center" style="gap: 10px">
+              <UiIcon name="user" :size="18" style="color: var(--primary)" />
+              <span style="font-weight: 600">Холбоо барих мэдээлэл</span>
+            </div>
+            <div class="field">
+              <label>Нэр <span style="color: var(--clay)">*</span></label>
+              <input v-model="form.name" class="input" placeholder="Таны нэр" />
+            </div>
+            <div class="field">
+              <label>Утасны дугаар <span style="color: var(--clay)">*</span></label>
+              <input v-model="form.phone" class="input" type="tel" placeholder="+976 ···· ····" />
+            </div>
+            <div class="field">
+              <label>И-мэйл</label>
+              <input :value="form.email || session?.user?.email || ''" class="input" type="email" disabled style="opacity: 0.6" />
+            </div>
+          </div>
+
           <label
             style="font-size: 13px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 10px"
           >
