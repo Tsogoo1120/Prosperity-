@@ -21,7 +21,25 @@ const newSlotType = ref('coaching')
 const addSlotErr = ref('')
 const addingSlot = ref(false)
 
-defineExpose({ openAddSlot: () => { showAddSlot.value = true } })
+// Managing an existing available slot (view → delete)
+const selectedSlot = ref(null)
+const deletingSlot = ref(false)
+const deleteErr = ref('')
+
+function toISODate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+defineExpose({
+  openAddSlot: () => {
+    // Prefill with the first day of the week currently in view.
+    if (!newSlotDate.value && props.weekDates?.length) newSlotDate.value = toISODate(props.weekDates[0])
+    showAddSlot.value = true
+  },
+})
 
 function slotsForDay(dayIndex) {
   const target = props.weekDates[dayIndex]
@@ -61,6 +79,16 @@ async function saveNewSlot() {
     addSlotErr.value = 'Эхлэх цаг ирээдүйд байх ёстой'
     return
   }
+  // Guard against overlapping an existing slot in the week in view.
+  const overlaps = props.slots.some((s) => {
+    const sStart = new Date(s.start_at).getTime()
+    const sEnd = new Date(s.end_at).getTime()
+    return startDt.getTime() < sEnd && endDt.getTime() > sStart
+  })
+  if (overlaps) {
+    addSlotErr.value = 'Энэ цаг өмнө нэмсэн цагтай давхцаж байна'
+    return
+  }
   addingSlot.value = true
   addSlotErr.value = ''
   const { error } = await supabase.from('coaching_slots').insert({
@@ -73,6 +101,29 @@ async function saveNewSlot() {
   if (error) { addSlotErr.value = error.message; return }
   showAddSlot.value = false
   newSlotDate.value = ''
+  emit('slot-added')
+}
+
+function onSlotClick(slot) {
+  // Only available slots are manageable here; booked/pending are handled
+  // from the Booking requests tab so user bookings aren't disrupted.
+  if (slot.status !== 'available') return
+  deleteErr.value = ''
+  selectedSlot.value = slot
+}
+
+async function deleteSlot() {
+  if (!selectedSlot.value) return
+  deletingSlot.value = true
+  deleteErr.value = ''
+  const { error } = await supabase
+    .from('coaching_slots')
+    .delete()
+    .eq('id', selectedSlot.value.id)
+    .eq('status', 'available')
+  deletingSlot.value = false
+  if (error) { deleteErr.value = error.message; return }
+  selectedSlot.value = null
   emit('slot-added')
 }
 </script>
@@ -104,6 +155,7 @@ async function saveNewSlot() {
         <div
           v-for="s in slotsForDay(di)"
           :key="s.id"
+          @click="onSlotClick(s)"
           :style="{
             position: 'absolute',
             left: '5px',
@@ -116,7 +168,7 @@ async function saveNewSlot() {
             padding: '5px 9px',
             overflow: 'hidden',
             boxShadow: 'var(--sh-sm)',
-            cursor: 'pointer',
+            cursor: s.status === 'available' ? 'pointer' : 'default',
             borderLeft: s.status === 'pending' ? '3px solid var(--warn)' : s.status === 'booked' ? '3px solid var(--primary-deep)' : '3px solid var(--line)',
             fontSize: '12px',
           }"
@@ -169,6 +221,40 @@ async function saveNewSlot() {
           <button class="btn btn-primary btn-block" :disabled="addingSlot" @click="saveNewSlot">
             {{ addingSlot ? 'Хадгалж байна…' : 'Нэмэх' }}
           </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Manage / Delete Slot Modal (available slots only) -->
+  <Teleport to="body">
+    <div v-if="selectedSlot" class="modal-scrim" @click="selectedSlot = null">
+      <div
+        class="card pop"
+        style="width: 380px; max-width: 94vw; border-radius: 20px; overflow: hidden; box-shadow: var(--sh-lg)"
+        @click.stop
+      >
+        <div style="padding: 22px 26px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between">
+          <div style="font-weight: 600; font-size: 16px">Цаг устгах</div>
+          <button class="btn btn-quiet" style="padding: 8px" @click="selectedSlot = null">
+            <UiIcon name="x" :size="18" />
+          </button>
+        </div>
+        <div style="padding: 26px; display: flex; flex-direction: column; gap: 16px">
+          <p style="font-size: 14px; margin: 0; font-weight: 600">
+            {{ slotLabel(selectedSlot) }}
+          </p>
+          <p style="font-size: 13.5px; margin: 0; color: var(--muted)">
+            {{ new Date(selectedSlot.start_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) }}
+          </p>
+          <p style="font-size: 13.5px; margin: 0; color: var(--ink-soft)">Энэ боломжит цагийг устгах уу?</p>
+          <p v-if="deleteErr" style="font-size: 13px; color: var(--bad); margin: 0">{{ deleteErr }}</p>
+          <div class="flex items-center" style="gap: 10px">
+            <button class="btn btn-ghost btn-block" @click="selectedSlot = null">Болих</button>
+            <button class="btn btn-block" style="background: var(--bad); color: #fff" :disabled="deletingSlot" @click="deleteSlot">
+              {{ deletingSlot ? 'Устгаж байна…' : 'Устгах' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>

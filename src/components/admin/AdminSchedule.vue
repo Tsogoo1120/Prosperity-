@@ -57,7 +57,7 @@ async function loadPendingRequests() {
   loadingPending.value = true
   const { data } = await supabase
     .from('coaching_slots')
-    .select('id, start_at, end_at, status, service_type, description, user_id, payment_screenshot_path, profiles(full_name, email, avatar_url)')
+    .select('id, start_at, end_at, status, service_type, description, user_id, profiles(full_name, email, phone, avatar_url)')
     .eq('status', 'pending')
     .order('start_at', { ascending: true })
   pendingSlots.value = data ?? []

@@ -1,29 +1,14 @@
 <script setup>
-import { reactive, watch } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
-import { supabase } from '@/lib/supabase.js'
 
-const props = defineProps({
+defineProps({
   slots: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   actingSlotId: { type: String, default: null },
   actErr: { type: String, default: '' },
 })
 const emit = defineEmits(['approve', 'deny'])
-
-const screenshotUrls = reactive({})
-
-watch(() => props.slots, (slots) => {
-  for (const slot of slots) {
-    if (slot.payment_screenshot_path && !screenshotUrls[slot.id]) {
-      supabase.storage
-        .from('payment-screenshots')
-        .createSignedUrl(slot.payment_screenshot_path, 3600)
-        .then(({ data: u }) => { if (u?.signedUrl) screenshotUrls[slot.id] = u.signedUrl })
-    }
-  }
-}, { immediate: true })
 
 function fmtDt(iso) {
   if (!iso) return '—'
@@ -64,6 +49,7 @@ function fmtDt(iso) {
               <div>
                 <div style="font-weight: 600; font-size: 15px">{{ slot.profiles?.full_name || '—' }}</div>
                 <div class="muted" style="font-size: 13px">{{ slot.profiles?.email }}</div>
+                <div v-if="slot.profiles?.phone" class="muted" style="font-size: 13px">{{ slot.profiles.phone }}</div>
               </div>
             </div>
 
@@ -81,21 +67,8 @@ function fmtDt(iso) {
               </div>
             </div>
 
-            <!-- Screenshot + meet link + actions -->
-            <div style="width: 100%; margin-top: 12px; display: flex; flex-direction: column; gap: 12px">
-              <div v-if="slot.payment_screenshot_path" style="border-radius: 10px; overflow: hidden; border: 1px solid var(--line); max-height: 160px; background: var(--surface-2)">
-                <img
-                  v-if="screenshotUrls[slot.id]"
-                  :src="screenshotUrls[slot.id]"
-                  alt="Баримт"
-                  style="width: 100%; max-height: 160px; object-fit: contain; display: block"
-                />
-                <div v-else style="padding: 18px; text-align: center; font-size: 12.5px; color: var(--muted)">Баримт уншиж байна…</div>
-              </div>
-              <div v-else style="padding: 12px; border-radius: 10px; background: var(--warn-tint); font-size: 12.5px; color: var(--warn)">
-                Төлбөрийн баримт байхгүй
-              </div>
-
+            <!-- Booking confirmation actions — no payment here; payments live in the Payments area -->
+            <div style="width: 100%; margin-top: 4px; display: flex; flex-direction: column; gap: 12px">
               <div style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px">
                 <UiIcon name="check" :size="14" style="color: var(--good)" />
                 Батлахад Google Meet линк автоматаар үүсч имэйлээр илгээгдэнэ.
