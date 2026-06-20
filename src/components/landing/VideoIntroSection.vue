@@ -1,21 +1,24 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { introVideo } from '@/data/union.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
-import { getIntroVideoPublicUrl } from '@/lib/videoUpload.js'
+import { getIntroVideoPublicUrl, getStreamIframeUrl } from '@/lib/videoUpload.js'
 
 const emit = defineEmits(['nav'])
 
-const commercialVideo = ref(null)
+const commercialVideo = ref(null)     // legacy direct URL
+const introStreamUid = ref(null)      // Cloudflare Stream uid
+const introIframeUrl = computed(() => getStreamIframeUrl(introStreamUid.value))
 
 onMounted(async () => {
   const { data } = await supabase
     .from('site_settings')
-    .select('value')
-    .eq('key', 'intro_video_path')
-    .maybeSingle()
-  if (data?.value) commercialVideo.value = getIntroVideoPublicUrl(data.value)
+    .select('key, value')
+    .in('key', ['intro_video_stream_uid', 'intro_video_path'])
+  const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
+  if (map.intro_video_stream_uid) introStreamUid.value = map.intro_video_stream_uid
+  else if (map.intro_video_path) commercialVideo.value = getIntroVideoPublicUrl(map.intro_video_path)
 })
 
 function goEnrollSubscription() {
@@ -66,7 +69,17 @@ function goEnrollSubscription() {
       </div>
 
       <div class="landing-reveal landing-reveal--scale intro-video-wrap" style="min-width: 0; transition-delay: 0.08s">
+        <div v-if="introIframeUrl" class="intro-video" style="overflow: hidden; background: #000">
+          <iframe
+            :src="introIframeUrl"
+            :title="introVideo.title"
+            style="width: 100%; height: 100%; border: none; display: block"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture;"
+            allowfullscreen
+          />
+        </div>
         <video
+          v-else
           class="intro-video"
           :src="commercialVideo"
           :title="introVideo.title"

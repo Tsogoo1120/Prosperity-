@@ -9,8 +9,8 @@ import {
   uploadVideoToCloudflareStream,
   readVideoDuration,
   getThumbnailUrl,
-  uploadIntroVideoToStorage,
   getIntroVideoPublicUrl,
+  getStreamIframeUrl,
 } from '@/lib/videoUpload.js'
 
 const STREAM_ENABLED = !!import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
@@ -18,25 +18,25 @@ const STREAM_ENABLED = !!import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
 const { session } = useAuth()
 
 // --- intro video ---
-const introVideoPath = ref(null)
+const introVideoPath = ref(null)          // legacy Supabase Storage path
+const introVideoStreamUid = ref(null)     // Cloudflare Stream uid
 const introVideoFile = ref(null)
 const introVideoPreview = ref(null)
 const introSaving = ref(false)
 const introError = ref('')
 const introStatus = ref('')
 
-const introVideoUrl = computed(() => {
-  if (introVideoPreview.value) return introVideoPreview.value
-  return getIntroVideoPublicUrl(introVideoPath.value)
-})
+const introIframeUrl = computed(() => getStreamIframeUrl(introVideoStreamUid.value))
+const legacyIntroUrl = computed(() => getIntroVideoPublicUrl(introVideoPath.value))
 
 async function loadIntroVideo() {
   const { data } = await supabase
     .from('site_settings')
-    .select('value')
-    .eq('key', 'intro_video_path')
-    .maybeSingle()
-  introVideoPath.value = data?.value ?? null
+    .select('key, value')
+    .in('key', ['intro_video_stream_uid', 'intro_video_path'])
+  const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
+  introVideoStreamUid.value = map.intro_video_stream_uid ?? null
+  introVideoPath.value = map.intro_video_path ?? null
 }
 
 function onIntroVideoChange(e) {
@@ -51,10 +51,10 @@ async function saveIntroVideo() {
   if (!introVideoFile.value) return
   introSaving.value = true
   introError.value = ''
-  introStatus.value = 'Видео байршуулж байна… 0%'
+  introStatus.value = 'Видео Cloudflare Stream руу байршуулж байна… 0%'
   const token = session.value?.access_token
-  const r = await uploadIntroVideoToStorage(introVideoFile.value, token, (p) => {
-    introStatus.value = `Видео байршуулж байна… ${Math.round(p * 100)}%`
+  const r = await uploadVideoToCloudflareStream(introVideoFile.value, 'desktop', token, (p) => {
+    introStatus.value = `Видео Cloudflare Stream руу байршуулж байна… ${Math.round(p * 100)}%`
   })
   if (r.error) {
     introError.value = r.error
@@ -65,11 +65,11 @@ async function saveIntroVideo() {
   introStatus.value = 'Тохиргоо хадгалж байна…'
   const { error: dbErr } = await supabase
     .from('site_settings')
-    .upsert({ key: 'intro_video_path', value: r.path, updated_at: new Date().toISOString() })
+    .upsert({ key: 'intro_video_stream_uid', value: r.uid, updated_at: new Date().toISOString() })
   if (dbErr) {
     introError.value = dbErr.message
   } else {
-    introVideoPath.value = r.path
+    introVideoStreamUid.value = r.uid
     introVideoFile.value = null
     if (introVideoPreview.value) { URL.revokeObjectURL(introVideoPreview.value); introVideoPreview.value = null }
   }
@@ -367,8 +367,26 @@ onBeforeUnmount(() => {
         <div class="flex items-start" style="gap: 16px; flex-wrap: wrap">
           <div style="flex-shrink: 0">
             <video
-              v-if="introVideoUrl"
-              :src="introVideoUrl"
+              v-if="introVideoPreview"
+              :src="introVideoPreview"
+              style="width: 220px; aspect-ratio: 16/9; border-radius: 10px; background: #0c1d25; object-fit: cover; display: block"
+              muted
+              preload="metadata"
+            />
+            <div
+              v-else-if="introIframeUrl"
+              style="width: 220px; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; background: #000"
+            >
+              <iframe
+                :src="introIframeUrl"
+                style="width: 100%; height: 100%; border: none; display: block"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture;"
+                allowfullscreen
+              />
+            </div>
+            <video
+              v-else-if="legacyIntroUrl"
+              :src="legacyIntroUrl"
               style="width: 220px; aspect-ratio: 16/9; border-radius: 10px; background: #0c1d25; object-fit: cover; display: block"
               muted
               preload="metadata"
