@@ -3,12 +3,16 @@ import {
   adminNewPaymentTemplate,
   coachingApprovedTemplate,
   coachingDeniedTemplate,
+  type EmailTemplate,
   paymentApprovedTemplate,
   paymentDeniedTemplate,
   paymentReceivedTemplate,
+  psychologyTestTemplate,
+  tarotReadingTemplate,
+  videoLessonTemplate,
   welcomeTemplate,
 } from '../_shared/templates.ts'
-import { sendOne, SITE_URL } from '../_shared/resend.ts'
+import { sendBroadcast, sendOne, SITE_URL } from '../_shared/resend.ts'
 import { CORS } from '../_shared/auth.ts'
 
 const SB_URL = Deno.env.get('SUPABASE_URL')!
@@ -26,6 +30,43 @@ async function requireAdmin(
     .single()
   if (caller?.role !== 'admin') return new Response('Forbidden', { status: 403 })
   return null
+}
+
+// Broadcasts a content-published email to every active member. Idempotent:
+// uses the row's notified_at flag so re-publishing never re-sends.
+async function broadcastContent(
+  admin: ReturnType<typeof createClient>,
+  table: string,
+  id: string,
+  buildTpl: (title: string | null) => EmailTemplate,
+): Promise<void> {
+  const { data: row } = await admin
+    .from(table)
+    .select('title, is_published, notified_at')
+    .eq('id', id)
+    .single()
+  if (!row || !(row as { is_published?: boolean }).is_published) return
+  if ((row as { notified_at?: string | null }).notified_at) return
+
+  const nowISO = new Date().toISOString()
+  const { data: subs } = await admin
+    .from('profiles')
+    .select('email')
+    .eq('subscription_status', 'active')
+    .eq('email_notifications', true)
+    .not('email', 'is', null)
+    .or(`subscription_expires_at.is.null,subscription_expires_at.gt.${nowISO}`)
+
+  const emails = ((subs ?? []) as { email: string | null }[])
+    .map((s) => s.email)
+    .filter((e): e is string => !!e)
+
+  if (emails.length) {
+    const tpl = buildTpl((row as { title?: string | null }).title ?? null)
+    await sendBroadcast(emails, tpl.subject, tpl.html, tpl.text, 'content-broadcast')
+  }
+  // Mark notified even when there were no recipients, so we don't retry forever.
+  await admin.from(table).update({ notified_at: nowISO }).eq('id', id)
 }
 
 Deno.serve(async (req) => {
@@ -97,14 +138,24 @@ Deno.serve(async (req) => {
       case 'admin_new_payment': {
         const { userId, paymentId } = body as { userId: string; paymentId: string }
         if (userId !== user.id) return new Response('Forbidden', { status: 403 })
-        const [{ data: admins }, { data: userProfile }, { data: payment }] = await Promise.all([
-          admin.from('profiles').select('email').eq('role', 'admin'),
-          admin.from('profiles').select('email, full_name').eq('id', userId).single(),
-          admin.from('payments').select('amount, currency, created_at').eq('id', paymentId).single(),
-        ])
-        const adminEmails = ((admins ?? []) as { email: string | null }[])
-          .map((a) => a.email)
-          .filter((e): e is string => !!e)
+        const [{ data: admins }, { data: userProfile }, { data: payment }, { data: adminSetting }] =
+          await Promise.all([
+            admin.from('profiles').select('email').or('role.eq.admin,is_admin.eq.true'),
+            admin.from('profiles').select('email, full_name').eq('id', userId).single(),
+            admin.from('payments').select('amount, currency, created_at').eq('id', paymentId).single(),
+            admin.from('site_settings').select('value').eq('key', 'admin_email').maybeSingle(),
+          ])
+        // Notify every admin: role=admin / is_admin profiles, the configured
+        // admin_email setting, plus a guaranteed fallback so the owner always
+        // receives payment requests even before any admin profile exists.
+        const recipientSet = new Set<string>()
+        for (const a of (admins ?? []) as { email: string | null }[]) {
+          if (a.email) recipientSet.add(a.email.trim().toLowerCase())
+        }
+        const settingEmail = (adminSetting as { value?: string | null } | null)?.value
+        if (settingEmail) recipientSet.add(String(settingEmail).trim().toLowerCase())
+        recipientSet.add((Deno.env.get('ADMIN_EMAIL') ?? 'altancog@gmail.com').trim().toLowerCase())
+        const adminEmails = [...recipientSet].filter(Boolean)
         if (!adminEmails.length || !userProfile?.email || !payment) break
         const tpl = adminNewPaymentTemplate({
           userEmail: userProfile.email,
@@ -210,6 +261,34 @@ Deno.serve(async (req) => {
           adminNote: adminNote ?? null,
         })
         await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
+        break
+      }
+
+      // ── Content broadcasts — require admin role ───────────────────────────
+      case 'content_video': {
+        const { contentId } = body as { contentId: string }
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
+        await broadcastContent(admin, 'video_lessons', contentId, (title) =>
+          videoLessonTemplate({ siteUrl: SITE_URL, itemTitle: title }))
+        break
+      }
+
+      case 'content_test': {
+        const { contentId } = body as { contentId: string }
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
+        await broadcastContent(admin, 'psychology_tests', contentId, (title) =>
+          psychologyTestTemplate({ siteUrl: SITE_URL, itemTitle: title }))
+        break
+      }
+
+      case 'content_reading': {
+        const { contentId } = body as { contentId: string }
+        const denied = await requireAdmin(admin, user.id)
+        if (denied) return denied
+        await broadcastContent(admin, 'collective_readings', contentId, (title) =>
+          tarotReadingTemplate({ siteUrl: SITE_URL, itemTitle: title }))
         break
       }
 

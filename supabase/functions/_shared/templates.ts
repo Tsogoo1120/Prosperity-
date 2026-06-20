@@ -80,6 +80,14 @@ function escapeHtml(input: string): string {
 
 const greet = (fullName: string | null) => (fullName ? `Сайн уу ${fullName},` : 'Сайн уу,')
 
+// Shared support line + signature used across the user-facing notifications.
+const SUPPORT_HTML =
+  `<p style="margin:0 0 16px;color:#5c564d;">Яаралтай асуух зүйл байвал <strong>Tsogoo_1120</strong> instagram хаяг руу бичээрэй.</p>`
+const SIGN_HTML =
+  `<p style="margin:16px 0 0;color:#5c564d;">Хүндэтгэсэн,<br />Г.Алтанцог</p>`
+const SUPPORT_TEXT = 'Яаралтай асуух зүйл байвал Tsogoo_1120 instagram хаяг руу бичээрэй.'
+const SIGN_TEXT = 'Хүндэтгэсэн,\nГ.Алтанцог'
+
 // ─── Welcome ─────────────────────────────────────────────────────────────────
 
 export function welcomeTemplate(opts: { fullName: string | null; siteUrl: string }): EmailTemplate {
@@ -160,26 +168,24 @@ export function paymentReceivedTemplate(opts: {
   amount: number
   currency: string
 }): EmailTemplate {
-  const greeting = greet(opts.fullName)
-  const amountLabel = `${opts.amount.toLocaleString('mn-MN')} ${escapeHtml(opts.currency)}`
-
   return {
     subject: 'Таны хүсэлт хүлээн авлаа',
     html: layout({
-      title: 'Төлбөр хүлээн авлаа',
-      greeting,
+      title: 'Төлбөрийн баримт хүлээн авлаа',
+      greeting: 'Сайн байна уу,',
       bodyHtml: `
+        <p style="margin:0 0 16px;color:#5c564d;">Таны төлбөрийн баримтыг хүлээн авлаа.</p>
         <p style="margin:0 0 16px;color:#5c564d;">
-          Таны төлбөрийн баримт амжилттай хүлээн авлаа. Одоогоор <strong>${amountLabel}</strong> дүнтэй төлбөр хяналтад байна.
+          Админ баг 8 цагийн дотор шалгаад, төлбөр баталгаажмагц таны эрхийг нээх болно.
         </p>
-        <p style="margin:0 0 16px;color:#5c564d;">
-          Бид таны шилжүүлгийг шалгаж байна. Шалгалт дууссаны дараа үр дүнг имэйлээр мэдэгдэнэ.
-        </p>`,
+        <p style="margin:0 0 16px;color:#5c564d;">Хүлээцтэй хандаж буйд баярлалаа.</p>
+        ${SUPPORT_HTML}
+        ${SIGN_HTML}`,
       ctaLabel: 'Хүлээгдэж буй төлөв харах',
       ctaHref: opts.siteUrl,
     }),
     text:
-      `${greeting}\n\nТаны төлбөрийн баримт хүлээн авлаа (${opts.amount} ${opts.currency}). Төлбөр одоогоор хяналтад байна.\n\nШалгалт дууссаны дараа үр дүнг имэйлээр мэдэгдэнэ.\n\n${opts.siteUrl}\n\n— Union`,
+      `Сайн байна уу,\n\nТаны төлбөрийн баримтыг хүлээн авлаа.\nАдмин баг 8 цагийн дотор шалгаад, төлбөр баталгаажмагц таны эрхийг нээх болно.\nХүлээцтэй хандаж буйд баярлалаа.\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
   }
 }
 
@@ -190,26 +196,22 @@ export function paymentApprovedTemplate(opts: {
   siteUrl: string
   expiresAt: string
 }): EmailTemplate {
-  const greeting = greet(opts.fullName)
-  const expiresHuman = formatMongolianDate(opts.expiresAt)
-
   return {
     subject: 'Таны төлбөр баталгаажлаа',
     html: layout({
       title: 'Төлбөр баталгаажлаа',
-      greeting,
+      greeting: 'Сайн байна уу,',
       bodyHtml: `
-        <p style="margin:0 0 16px;color:#5c564d;">
-          Таны төлбөр баталгаажлаа. Таны эрх нээгдсэн тул та нэвтэрч орж болно.
-        </p>
-        <p style="margin:0 0 16px;color:#5c564d;">
-          Багцын хүчинтэй хугацаа: <strong>${expiresHuman}</strong> хүртэл.
-        </p>`,
+        <p style="margin:0 0 16px;color:#5c564d;">Таны төлбөр амжилттай баталгаажлаа.</p>
+        <p style="margin:0 0 16px;color:#5c564d;">Таны 1 сарын эрх идэвхжлээ.</p>
+        <p style="margin:0 0 16px;color:#5c564d;">Та яг одоо нэвтэрч ороод ашиглаж эхлэх боломжтой.</p>
+        ${SUPPORT_HTML}
+        ${SIGN_HTML}`,
       ctaLabel: 'Нэвтрэх',
       ctaHref: opts.siteUrl,
     }),
     text:
-      `${greeting}\n\nТаны төлбөр баталгаажлаа. Таны эрх нээгдсэн тул та нэвтэрч орж болно.\nХүчинтэй хугацаа: ${expiresHuman} хүртэл.\n\nНэвтрэх: ${opts.siteUrl}\n\n— Union`,
+      `Сайн байна уу,\n\nТаны төлбөр амжилттай баталгаажлаа.\nТаны 1 сарын эрх идэвхжлээ.\nТа яг одоо нэвтэрч ороод ашиглаж эхлэх боломжтой.\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
   }
 }
 
@@ -316,40 +318,35 @@ export function coachingApprovedTemplate(opts: {
   adminNote: string | null
   meetLink?: string | null
 }): EmailTemplate {
-  const greeting = greet(opts.fullName)
   const startHuman = formatMongolianDateTime(opts.slotStartAt)
-  const endHuman = formatMongolianDateTime(opts.slotEndAt)
-  const noteBlock = opts.adminNote
-    ? `<p style="margin:0 0 16px;color:#5c564d;"><strong>Админы тэмдэглэл:</strong><br /><span style="white-space:pre-wrap;">${escapeHtml(opts.adminNote)}</span></p>`
-    : ''
   const meetBlock = opts.meetLink
     ? `<p style="margin:0 0 16px;color:#5c564d;">
          <strong>Google Meet линк:</strong><br />
          <a href="${opts.meetLink}" style="color:#e84a1f;word-break:break-all;">${opts.meetLink}</a>
        </p>`
-    : `<p style="margin:0 0 16px;color:#5c564d;">
-         Эсвэл та өөрөө <strong>Tsogoo_1120</strong> инста хаяглуу бичээд шууд ярьж болно.
-       </p>`
-  const meetText = opts.meetLink
-    ? `Google Meet линк: ${opts.meetLink}\n`
-    : `Асуулт байвал Tsogoo_1120 инста хаяглуу бичнэ үү.\n`
+    : ''
+  const meetText = opts.meetLink ? `Google Meet линк: ${opts.meetLink}\n` : ''
 
   return {
     subject: 'Таны цаг баталгаажлаа',
     html: layout({
-      title: 'Коучингын цаг баталгаажлаа',
-      greeting,
+      title: 'Уулзалтын цаг товлогдлоо',
+      greeting: 'Сайн байна уу,',
       bodyHtml: `
+        <p style="margin:0 0 16px;color:#5c564d;">Таны төлбөр амжилттай баталгаажлаа.</p>
+        <p style="margin:0 0 16px;color:#5c564d;">Уулзалтын цаг товлогдлоо: <strong>${startHuman}</strong></p>
         <p style="margin:0 0 16px;color:#5c564d;">
-          Таны цаг баталгаажлаа.<br />Хуваарь: <strong>${startHuman}</strong> – ${endHuman}
+          Та өөрийн бүртгэл эсвэл имэйлээр очсон Google Meet-ийн линкээр холбогдоорой.
         </p>
         ${meetBlock}
-        ${noteBlock}`,
+        <p style="margin:0 0 16px;color:#5c564d;">Удахгүй уулзая!</p>
+        ${SUPPORT_HTML}
+        ${SIGN_HTML}`,
       ctaLabel: 'Хяналтын самбар руу орох',
       ctaHref: opts.siteUrl,
     }),
     text:
-      `${greeting}\n\nТаны цаг баталгаажлаа.\nХуваарь: ${startHuman} – ${endHuman}\n\n${meetText}\n${opts.adminNote ? `Тэмдэглэл:\n${opts.adminNote}\n\n` : ''}— Union`,
+      `Сайн байна уу,\n\nТаны төлбөр амжилттай баталгаажлаа.\nУулзалтын цаг товлогдлоо: ${startHuman}\nТа өөрийн бүртгэл эсвэл имэйлээр очсон Google Meet-ийн линкээр холбогдоорой.\n${meetText}Удахгүй уулзая!\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
   }
 }
 
@@ -383,4 +380,73 @@ export function coachingDeniedTemplate(opts: {
     text:
       `${greeting}\n\nТаны ${startHuman}-ийн коучингын захиалгыг батлах боломжгүй боллоо.\n\n${opts.adminNote ? `Тайлбар:\n${opts.adminNote}\n\n` : ''}${opts.siteUrl}\n\n— Union`,
   }
+}
+
+// ─── Content broadcasts (sent to every active member on first publish) ────────
+
+function contentNotification(opts: {
+  subject: string
+  heading: string
+  announce: string
+  instruction: string
+  itemTitle?: string | null
+  ctaLabel: string
+  ctaHref: string
+}): EmailTemplate {
+  const titleBlock = opts.itemTitle
+    ? `<p style="margin:0 0 16px;color:#5c564d;">${opts.announce}<br /><strong style="color:#2a2520;">${escapeHtml(opts.itemTitle)}</strong></p>`
+    : `<p style="margin:0 0 16px;color:#5c564d;">${opts.announce}</p>`
+
+  return {
+    subject: opts.subject,
+    html: layout({
+      title: opts.heading,
+      greeting: 'Сайн байна уу,',
+      bodyHtml: `
+        ${titleBlock}
+        <p style="margin:0 0 16px;color:#5c564d;">${opts.instruction}</p>
+        ${SUPPORT_HTML}
+        ${SIGN_HTML}`,
+      ctaLabel: opts.ctaLabel,
+      ctaHref: opts.ctaHref,
+    }),
+    text:
+      `Сайн байна уу,\n\n${opts.announce}${opts.itemTitle ? `\n${opts.itemTitle}` : ''}\n\n${opts.instruction}\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
+  }
+}
+
+export function videoLessonTemplate(opts: { siteUrl: string; itemTitle?: string | null }): EmailTemplate {
+  return contentNotification({
+    subject: 'Шинэ видео хичээл орлоо',
+    heading: 'Шинэ видео хичээл орлоо',
+    announce: 'Шинэ видео хичээл орлоо.',
+    instruction: 'Та бүртгэл рүүгээ нэвтэрч орж үзээрэй.',
+    itemTitle: opts.itemTitle ?? null,
+    ctaLabel: 'Нэвтрэх',
+    ctaHref: opts.siteUrl,
+  })
+}
+
+export function psychologyTestTemplate(opts: { siteUrl: string; itemTitle?: string | null }): EmailTemplate {
+  return contentNotification({
+    subject: 'Сэтгэл зүйн шинэ тест орлоо',
+    heading: 'Сэтгэл зүйн шинэ тест орлоо',
+    announce: 'Сэтгэл зүйн шинэ тест нэмэгдлээ.',
+    instruction: 'Та бүртгэл рүүгээ нэвтэрч ороод тестээ бөглөөрэй.',
+    itemTitle: opts.itemTitle ?? null,
+    ctaLabel: 'Нэвтрэх',
+    ctaHref: opts.siteUrl,
+  })
+}
+
+export function tarotReadingTemplate(opts: { siteUrl: string; itemTitle?: string | null }): EmailTemplate {
+  return contentNotification({
+    subject: 'Шинэ нийтийн тарот уншлага орлоо',
+    heading: 'Шинэ нийтийн тарот уншлага орлоо',
+    announce: 'Шинэ нийтийн тарот уншлага нийтлэгдлээ.',
+    instruction: 'Та бүртгэл рүүгээ нэвтэрч орж үзээрэй.',
+    itemTitle: opts.itemTitle ?? null,
+    ctaLabel: 'Нэвтрэх',
+    ctaHref: opts.siteUrl,
+  })
 }

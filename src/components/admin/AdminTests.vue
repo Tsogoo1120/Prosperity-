@@ -24,8 +24,8 @@ async function load() {
   loading.value = true
   const { data } = await supabase
     .from('psychology_tests')
-    .select('id, slug, title, description, is_published, published_at, questions, scoring_rules, created_at')
-    .order('created_at', { ascending: false })
+    .select('id, slug, title, description, is_published, published_at, questions, scoring_rules, updated_at')
+    .order('updated_at', { ascending: false })
   list.value = data ?? []
   loading.value = false
 }
@@ -58,6 +58,14 @@ watch(() => form.value.title, (t) => {
   }
 })
 
+async function notifyContent(type, contentId) {
+  try {
+    await supabase.functions.invoke('send-email', { body: { type, contentId } })
+  } catch (e) {
+    console.error('content notify failed', e)
+  }
+}
+
 async function saveInfo() {
   if (!form.value.title.trim() || !form.value.slug.trim()) {
     formError.value = 'Гарчиг болон slug шаардлагатай'
@@ -75,13 +83,14 @@ async function saveInfo() {
     updated_at: new Date().toISOString(),
   }
 
-  const { error: err } = editId.value
-    ? await supabase.from('psychology_tests').update(payload).eq('id', editId.value)
-    : await supabase.from('psychology_tests').insert({ ...payload, questions: [], scoring_rules: { ranges: [] } })
+  const { data: saved, error: err } = editId.value
+    ? await supabase.from('psychology_tests').update(payload).eq('id', editId.value).select('id').single()
+    : await supabase.from('psychology_tests').insert({ ...payload, questions: [], scoring_rules: { ranges: [] } }).select('id').single()
 
   if (err) {
     formError.value = err.message
   } else {
+    if (form.value.is_published && saved?.id) notifyContent('content_test', saved.id)
     mode.value = 'list'
     await load()
   }
@@ -110,12 +119,14 @@ async function saveQuestions() {
 }
 
 async function togglePublish(t) {
+  const becomingPublished = !t.is_published
   const now = new Date().toISOString()
   await supabase.from('psychology_tests').update({
-    is_published: !t.is_published,
-    published_at: !t.is_published ? now : null,
+    is_published: becomingPublished,
+    published_at: becomingPublished ? now : null,
     updated_at: now,
   }).eq('id', t.id)
+  if (becomingPublished) notifyContent('content_test', t.id)
   await load()
 }
 

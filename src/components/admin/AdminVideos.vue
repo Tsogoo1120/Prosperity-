@@ -230,6 +230,14 @@ function onVerticalChange(e) {
   verticalFile.value = f
 }
 
+async function notifyContent(type, contentId) {
+  try {
+    await supabase.functions.invoke('send-email', { body: { type, contentId } })
+  } catch (e) {
+    console.error('content notify failed', e)
+  }
+}
+
 async function save() {
   if (!form.value.title.trim() || !form.value.slug.trim()) {
     formError.value = 'Гарчиг болон slug шаардлагатай'
@@ -321,13 +329,14 @@ async function save() {
     updated_at: new Date().toISOString(),
   }
 
-  const { error: err } = editId.value
-    ? await supabase.from('video_lessons').update(payload).eq('id', editId.value)
-    : await supabase.from('video_lessons').insert(payload)
+  const { data: saved, error: err } = editId.value
+    ? await supabase.from('video_lessons').update(payload).eq('id', editId.value).select('id').single()
+    : await supabase.from('video_lessons').insert(payload).select('id').single()
 
   if (err) {
     formError.value = err.message
   } else {
+    if (form.value.is_published && saved?.id) notifyContent('content_video', saved.id)
     showForm.value = false
     resetFiles()
     await load()
@@ -336,12 +345,14 @@ async function save() {
 }
 
 async function togglePublish(v) {
+  const becomingPublished = !v.is_published
   const now = new Date().toISOString()
   await supabase.from('video_lessons').update({
-    is_published: !v.is_published,
-    published_at: !v.is_published ? now : null,
+    is_published: becomingPublished,
+    published_at: becomingPublished ? now : null,
     updated_at: now,
   }).eq('id', v.id)
+  if (becomingPublished) notifyContent('content_video', v.id)
   await load()
 }
 

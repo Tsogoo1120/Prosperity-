@@ -57,13 +57,24 @@ async function saveReadingMeta(reading) {
     .eq('id', reading.id)
 }
 
+async function notifyContent(type, contentId) {
+  try {
+    await supabase.functions.invoke('send-email', { body: { type, contentId } })
+  } catch (e) {
+    console.error('content notify failed', e)
+  }
+}
+
 async function togglePublish(reading) {
   const next = !reading.is_published
   const { error } = await supabase
     .from('collective_readings')
     .update({ is_published: next, published_at: next ? new Date().toISOString() : null })
     .eq('id', reading.id)
-  if (!error) reading.is_published = next
+  if (!error) {
+    reading.is_published = next
+    if (next) notifyContent('content_reading', reading.id)
+  }
 }
 
 async function deleteReading(reading) {
