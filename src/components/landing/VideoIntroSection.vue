@@ -3,21 +3,24 @@ import { ref, computed, onMounted } from 'vue'
 import { introVideo } from '@/data/union.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
-import { getIntroVideoPublicUrl, getStreamIframeUrl } from '@/lib/videoUpload.js'
+import { getIntroVideoPublicUrl, getStreamIframeUrl, getR2VideoUrl } from '@/lib/videoUpload.js'
 
 const emit = defineEmits(['nav'])
 
-const commercialVideo = ref(null)     // legacy direct URL
+const commercialVideo = ref(null)     // legacy direct URL (Supabase Storage)
 const introStreamUid = ref(null)      // Cloudflare Stream uid
+const introR2Key = ref(null)          // R2 object key
 const introIframeUrl = computed(() => getStreamIframeUrl(introStreamUid.value))
+const introR2Url = computed(() => getR2VideoUrl(introR2Key.value))
 
 onMounted(async () => {
   const { data } = await supabase
     .from('site_settings')
     .select('key, value')
-    .in('key', ['intro_video_stream_uid', 'intro_video_path'])
+    .in('key', ['intro_video_stream_uid', 'intro_video_r2_key', 'intro_video_path'])
   const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
   if (map.intro_video_stream_uid) introStreamUid.value = map.intro_video_stream_uid
+  else if (map.intro_video_r2_key) introR2Key.value = map.intro_video_r2_key
   else if (map.intro_video_path) commercialVideo.value = getIntroVideoPublicUrl(map.intro_video_path)
 })
 
@@ -81,7 +84,7 @@ function goEnrollSubscription() {
         <video
           v-else
           class="intro-video"
-          :src="commercialVideo"
+          :src="introR2Url || commercialVideo"
           :title="introVideo.title"
           controls
           playsinline

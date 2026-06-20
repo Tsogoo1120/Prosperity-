@@ -11,6 +11,7 @@ import {
   getThumbnailUrl,
   getIntroVideoPublicUrl,
   getStreamIframeUrl,
+  getR2VideoUrl,
 } from '@/lib/videoUpload.js'
 
 const STREAM_ENABLED = !!import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
@@ -20,6 +21,7 @@ const { session } = useAuth()
 // --- intro video ---
 const introVideoPath = ref(null)          // legacy Supabase Storage path
 const introVideoStreamUid = ref(null)     // Cloudflare Stream uid
+const introVideoR2Key = ref(null)         // R2 object key
 const introVideoFile = ref(null)
 const introVideoPreview = ref(null)
 const introSaving = ref(false)
@@ -27,15 +29,17 @@ const introError = ref('')
 const introStatus = ref('')
 
 const introIframeUrl = computed(() => getStreamIframeUrl(introVideoStreamUid.value))
+const introR2Url = computed(() => getR2VideoUrl(introVideoR2Key.value))
 const legacyIntroUrl = computed(() => getIntroVideoPublicUrl(introVideoPath.value))
 
 async function loadIntroVideo() {
   const { data } = await supabase
     .from('site_settings')
     .select('key, value')
-    .in('key', ['intro_video_stream_uid', 'intro_video_path'])
+    .in('key', ['intro_video_stream_uid', 'intro_video_r2_key', 'intro_video_path'])
   const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
   introVideoStreamUid.value = map.intro_video_stream_uid ?? null
+  introVideoR2Key.value = map.intro_video_r2_key ?? null
   introVideoPath.value = map.intro_video_path ?? null
 }
 
@@ -51,25 +55,36 @@ async function saveIntroVideo() {
   if (!introVideoFile.value) return
   introSaving.value = true
   introError.value = ''
-  introStatus.value = 'Видео Cloudflare Stream руу байршуулж байна… 0%'
   const token = session.value?.access_token
-  const r = await uploadVideoToCloudflareStream(introVideoFile.value, 'desktop', token, (p) => {
-    introStatus.value = `Видео Cloudflare Stream руу байршуулж байна… ${Math.round(p * 100)}%`
-  })
-  if (r.error) {
-    introError.value = r.error
-    introSaving.value = false
-    introStatus.value = ''
-    return
+
+  // Same upload path as lesson videos: Cloudflare Stream when enabled,
+  // otherwise R2 (served publicly via cdn.tsogoo.site).
+  let settingKey, settingValue
+  if (STREAM_ENABLED) {
+    introStatus.value = 'Видео Cloudflare Stream руу байршуулж байна… 0%'
+    const r = await uploadVideoToCloudflareStream(introVideoFile.value, 'desktop', token, (p) => {
+      introStatus.value = `Видео байршуулж байна… ${Math.round(p * 100)}%`
+    })
+    if (r.error) { introError.value = r.error; introSaving.value = false; introStatus.value = ''; return }
+    settingKey = 'intro_video_stream_uid'
+    settingValue = r.uid
+  } else {
+    introStatus.value = 'Видео байршуулж байна…'
+    const r = await uploadVideoToR2(introVideoFile.value, 'video-lessons', 'desktop', token)
+    if (r.error) { introError.value = r.error; introSaving.value = false; introStatus.value = ''; return }
+    settingKey = 'intro_video_r2_key'
+    settingValue = r.key
   }
+
   introStatus.value = 'Тохиргоо хадгалж байна…'
   const { error: dbErr } = await supabase
     .from('site_settings')
-    .upsert({ key: 'intro_video_stream_uid', value: r.uid, updated_at: new Date().toISOString() })
+    .upsert({ key: settingKey, value: settingValue, updated_at: new Date().toISOString() })
   if (dbErr) {
     introError.value = dbErr.message
   } else {
-    introVideoStreamUid.value = r.uid
+    if (STREAM_ENABLED) introVideoStreamUid.value = settingValue
+    else introVideoR2Key.value = settingValue
     introVideoFile.value = null
     if (introVideoPreview.value) { URL.revokeObjectURL(introVideoPreview.value); introVideoPreview.value = null }
   }
@@ -384,6 +399,13 @@ onBeforeUnmount(() => {
                 allowfullscreen
               />
             </div>
+            <video
+              v-else-if="introR2Url"
+              :src="introR2Url"
+              style="width: 220px; aspect-ratio: 16/9; border-radius: 10px; background: #0c1d25; object-fit: cover; display: block"
+              muted
+              preload="metadata"
+            />
             <video
               v-else-if="legacyIntroUrl"
               :src="legacyIntroUrl"

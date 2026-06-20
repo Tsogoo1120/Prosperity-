@@ -16,6 +16,15 @@ export function getIntroVideoPublicUrl(path) {
   return data?.publicUrl ?? null
 }
 
+const R2_CDN_BASE = 'https://cdn.tsogoo.site'
+
+// Public CDN URL for an R2 video key (same scheme lesson playback uses).
+export function getR2VideoUrl(key) {
+  if (!key) return null
+  if (/^https?:\/\//.test(key)) return key
+  return `${R2_CDN_BASE}/${key}`
+}
+
 export async function uploadThumbnailToStorage(file, slug) {
   const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
   const path = `${slug}-${Date.now()}.${ext}`
