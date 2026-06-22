@@ -56,11 +56,11 @@ function fmtDt(iso) {
             <!-- Slot info -->
             <div style="flex: 1; min-width: 180px">
               <div style="font-weight: 600; font-size: 14.5px; margin-bottom: 4px">
-                {{ slot.service_type === 'tarot_reading' ? 'Тарот уншлага' : '1:1 Coaching' }}
+                Онлайн уулзалт
               </div>
               <div class="muted" style="font-size: 13px; display: flex; align-items: center; gap: 6px">
                 <UiIcon name="calendar" :size="14" />
-                {{ fmtDt(slot.start_at) }} – {{ new Date(slot.end_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) }}
+                {{ fmtDt(slot.start_at) }}
               </div>
               <div v-if="slot.description" class="muted" style="font-size: 13px; margin-top: 4px">
                 <UiIcon name="note" :size="13" style="vertical-align: -2px" /> {{ slot.description }}

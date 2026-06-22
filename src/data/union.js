@@ -95,7 +95,7 @@ export const services = [
   },
 ]
 
-export const courses = [
+const courses = [
   {
     id: 'foundations',
     title: 'Foundations of Self',
@@ -202,10 +202,10 @@ export const instructor = {
 
 
 // Course prices keyed by id (was inlined in the enroll flow).
-export const coursePrices = { foundations: 149, eq: 129, resilience: 119, clarity: 139 }
+const coursePrices = { foundations: 149, eq: 129, resilience: 119, clarity: 139 }
 
 // Student community — journey vlog feed
-export const currentStudent = {
+const currentStudent = {
   id: 'u-avery',
   name: 'Avery Quinn',
   avatar: 'var(--clay)',
@@ -213,7 +213,7 @@ export const currentStudent = {
   course: 'Foundations of Self',
 }
 
-export const journeyPosts = [
+const journeyPosts = [
   {
     id: 'jp1',
     authorId: 'u-lena',
@@ -326,13 +326,3 @@ export const journeyPosts = [
     comments: [],
   },
 ]
-
-export default {
-  courses,
-  challengeDays,
-  instructor,
-  introVideo,
-  coursePrices,
-  currentStudent,
-  journeyPosts,
-}

@@ -113,25 +113,29 @@ async function approvePayment() {
     return
   }
 
-  // Renewal-aware expiry: extend from max(now, existing_expiry)
-  const now = new Date()
-  const existing = payment.profiles?.subscription_expires_at
-    ? new Date(payment.profiles.subscription_expires_at)
-    : null
-  const base = existing && existing > now ? existing : now
-  const newExpiry = new Date(base.getTime() + DURATION_DAYS * 24 * 60 * 60 * 1000)
+  // Subscription is the ONLY product that grants/extends subscription access.
+  // Meeting payments (tarot/coaching) must NOT touch subscription state.
+  if (payment.service_type === 'subscription') {
+    // Renewal-aware expiry: extend from max(now, existing_expiry)
+    const now = new Date()
+    const existing = payment.profiles?.subscription_expires_at
+      ? new Date(payment.profiles.subscription_expires_at)
+      : null
+    const base = existing && existing > now ? existing : now
+    const newExpiry = new Date(base.getTime() + DURATION_DAYS * 24 * 60 * 60 * 1000)
 
-  const { error: profErr } = await supabase
-    .from('profiles')
-    .update({
-      subscription_status: 'active',
-      subscription_expires_at: newExpiry.toISOString(),
-      expiry_reminder_stage: 0,
-    })
-    .eq('id', userId)
+    const { error: profErr } = await supabase
+      .from('profiles')
+      .update({
+        subscription_status: 'active',
+        subscription_expires_at: newExpiry.toISOString(),
+        expiry_reminder_stage: 0,
+      })
+      .eq('id', userId)
 
-  if (profErr) {
-    actError.value = 'Профайл шинэчлэхэд алдаа: ' + profErr.message
+    if (profErr) {
+      actError.value = 'Профайл шинэчлэхэд алдаа: ' + profErr.message
+    }
   }
 
   // Fire-and-forget — email failure must not block admin workflow
@@ -158,13 +162,17 @@ async function denyPayment() {
     return
   }
 
-  const { error: profErr } = await supabase
-    .from('profiles')
-    .update({ subscription_status: 'denied' })
-    .eq('id', payment.user_id)
+  // Only subscription denials affect subscription status.
+  // Meeting payment denials must NOT mark the user's subscription as denied.
+  if (payment.service_type === 'subscription') {
+    const { error: profErr } = await supabase
+      .from('profiles')
+      .update({ subscription_status: 'denied' })
+      .eq('id', payment.user_id)
 
-  if (profErr) {
-    actError.value = 'Профайл шинэчлэхэд алдаа: ' + profErr.message
+    if (profErr) {
+      actError.value = 'Профайл шинэчлэхэд алдаа: ' + profErr.message
+    }
   }
 
   // Fire-and-forget — email failure must not block admin workflow

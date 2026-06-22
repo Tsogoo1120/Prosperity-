@@ -6,14 +6,14 @@ import { reactive, watch } from 'vue'
  * document.documentElement as CSS custom properties (which every component
  * reads through the Tailwind token mapping).
  */
-export const ACCENTS = {
+const ACCENTS = {
   Clay: { c: '#bd7350', d: '#a35e3d', t: '#f5e6dc', tDark: '#3a2a20' },
   Blue: { c: '#4a6d8c', d: '#36546e', t: '#e4edf3', tDark: '#243a48' },
   Sage: { c: '#5f8a73', d: '#4a6f5b', t: '#e3efe7', tDark: '#233530' },
   Plum: { c: '#8a6a86', d: '#6f5270', t: '#efe5ef', tDark: '#352a35' },
 }
 
-export const HEAD_FONTS = {
+const HEAD_FONTS = {
   Literata: "'Literata', Georgia, serif",
   Lora: "'Lora', Georgia, serif",
   Spectral: "'Spectral', Georgia, serif",

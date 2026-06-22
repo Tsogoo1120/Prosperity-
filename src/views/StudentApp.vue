@@ -27,7 +27,20 @@ watchEffect(() => {
 
 const view = ref('dashboard')
 const booking = ref(false)
+const targetLesson = ref(null) // deep-link lesson id for LearnView (from dashboard card)
 const { open: sidebarOpen, toggle: toggleSidebar, close: closeSidebar } = useSidebar()
+
+function setView(v) {
+  // Explicit nav to "learn" (sidebar / back button) resumes from stored progress,
+  // so clear any stale deep-link target left over from a dashboard click.
+  if (v === 'learn') targetLesson.value = null
+  view.value = v
+}
+
+function openLesson(id) {
+  targetLesson.value = id
+  view.value = 'learn'
+}
 
 const userName = computed(() => {
   const name = profile.value?.full_name ?? session.value?.user?.user_metadata?.full_name ?? session.value?.user?.user_metadata?.name ?? ''
@@ -67,37 +80,37 @@ async function handleLogout() {
       :view="view"
       :open="sidebarOpen"
       :user-name="userName"
-      @set-view="view = $event"
+      @set-view="setView"
       @nav="emit('nav', $event)"
       @close="closeSidebar"
       @logout="handleLogout"
     />
     <div class="flex flex-col" style="flex: 1; min-width: 0">
-      <LearnView v-if="view === 'learn'" @set-view="view = $event" @menu="toggleSidebar" />
+      <LearnView v-if="view === 'learn'" :initial-lesson-id="targetLesson" @set-view="setView" @menu="toggleSidebar" />
 
       <template v-else-if="view === 'assess'">
-        <StudentTopbar :title="title" :sub="sub" @menu="toggleSidebar" />
+        <StudentTopbar :title="title" :sub="sub" @open-lesson="openLesson" @menu="toggleSidebar" />
         <AssessmentsView />
       </template>
 
       <template v-else-if="view === 'challenge'">
-        <StudentTopbar :title="title" :sub="sub" @menu="toggleSidebar" />
+        <StudentTopbar :title="title" :sub="sub" @open-lesson="openLesson" @menu="toggleSidebar" />
         <ChallengeView />
       </template>
 
       <template v-else-if="view === 'sessions'">
-        <StudentTopbar :title="title" :sub="sub" show-book @book="booking = true" @menu="toggleSidebar" />
+        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="booking = true" @menu="toggleSidebar" />
         <SessionsView @book="booking = true" />
       </template>
 
       <template v-else-if="view === 'community'">
-        <StudentTopbar :title="title" :sub="sub" @menu="toggleSidebar" />
+        <StudentTopbar :title="title" :sub="sub" @open-lesson="openLesson" @menu="toggleSidebar" />
         <CommunityView />
       </template>
 
       <template v-else>
-        <StudentTopbar :title="title" :sub="sub" show-book @book="booking = true" @menu="toggleSidebar" />
-        <DashboardView @set-view="view = $event" @book="booking = true" />
+        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="booking = true" @menu="toggleSidebar" />
+        <DashboardView @set-view="setView" @open-lesson="openLesson" @book="booking = true" />
       </template>
     </div>
     <BookingModal :open="booking" @close="booking = false" />

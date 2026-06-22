@@ -19,7 +19,7 @@ function getMondayOf(date) {
 const weekStart = ref(getMondayOf(new Date()))
 
 const weekDates = computed(() =>
-  Array.from({ length: 5 }, (_, i) => {
+  Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart.value)
     d.setDate(d.getDate() + i)
     return d
@@ -28,7 +28,7 @@ const weekDates = computed(() =>
 
 const weekLabel = computed(() => {
   const s = weekDates.value[0]
-  const e = weekDates.value[4]
+  const e = weekDates.value[6]
   const mo = { month: 'short', day: 'numeric' }
   return s.toLocaleDateString('en-US', mo) + ' – ' + e.toLocaleDateString('en-US', { ...mo, year: 'numeric' })
 })

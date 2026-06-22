@@ -16,8 +16,7 @@ function fmtSlotLabel(s) {
   const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  const type = s.service_type === 'tarot_reading' ? 'Тарот' : 'Coaching'
-  return `${date} · ${hh}:${mm} (${type})`
+  return `${date} · ${hh}:${mm}`
 }
 
 onMounted(async () => {

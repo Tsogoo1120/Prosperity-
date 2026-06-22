@@ -59,14 +59,9 @@ const MONTH_NAMES = ['1-р сар', '2-р сар', '3-р сар', '4-р сар',
 
 const dayMap = computed(() => {
   const map = {}
-  const serviceId = selectedService.value.id
-  // Map service ID to slot service_type
-  const targetType = serviceId === 'tarot' ? 'tarot_reading' : 'coaching'
-
+  // Slots are typeless now — the user already picked their service, so every
+  // available slot is bookable regardless of which service they chose.
   for (const s of rawSlots.value) {
-    // Only show slots matching the selected service type
-    if (s.service_type !== targetType) continue
-
     const iso = s.start_at.slice(0, 10)
     if (!map[iso]) {
       const d = new Date(s.start_at)
@@ -357,8 +352,11 @@ async function submitPayment() {
     return
   }
 
-  // Flip profile to pending (SECURITY DEFINER RPC, non-fatal if fails)
-  try { await supabase.rpc('submit_payment_flip_pending') } catch {}
+  // Flip profile to pending ONLY for subscription purchases.
+  // Meeting bookings (tarot/coaching) must NOT touch subscription state.
+  if (selectedService.value.id === 'subscription') {
+    try { await supabase.rpc('submit_payment_flip_pending') } catch {}
+  }
 
   // Fire-and-forget emails — failures must not block the user
   if (paymentRow?.id) {

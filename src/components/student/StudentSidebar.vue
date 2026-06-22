@@ -60,21 +60,6 @@ function pick(id) {
         <span style="flex: 1">{{ lbl }}</span>
         <span v-if="id === 'challenge'" class="chip clay" style="padding: 2px 8px; font-size: 11.5px">Day 12</span>
       </button>
-      <div class="hr" style="margin: 14px 8px" />
-      <button
-        class="flex w-full items-center text-left"
-        style="gap: 13px; padding: 11px 14px; border-radius: 10px; border: none; cursor: pointer; background: transparent; color: var(--ink-soft); font-weight: 500; font-size: 14.5px"
-        @click="pick('dashboard')"
-      >
-        <UiIcon name="award" :size="20" /><span style="flex: 1">Achievements</span>
-      </button>
-      <button
-        class="flex w-full items-center text-left"
-        style="gap: 13px; padding: 11px 14px; border-radius: 10px; border: none; cursor: pointer; background: transparent; color: var(--ink-soft); font-weight: 500; font-size: 14.5px"
-        @click="pick('dashboard')"
-      >
-        <UiIcon name="settings" :size="20" /><span style="flex: 1">Settings</span>
-      </button>
     </nav>
     <div style="padding: 14px; border-top: 1px solid var(--line)">
       <div class="flex items-center justify-between" style="padding: 6px 8px">

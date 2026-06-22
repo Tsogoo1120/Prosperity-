@@ -6,6 +6,7 @@ import { useAuth } from '@/composables/useAuth.js'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 import AdminHead from '@/components/admin/AdminHead.vue'
 import AdminOverview from '@/components/admin/AdminOverview.vue'
+import AdminAnnouncements from '@/components/admin/AdminAnnouncements.vue'
 import AdminSchedule from '@/components/admin/AdminSchedule.vue'
 import AdminPayments from '@/components/admin/AdminPayments.vue'
 import AdminVideos from '@/components/admin/AdminVideos.vue'
@@ -44,12 +45,13 @@ watch(view, loadPending)
 
 const heads = {
   overview: ['Overview', 'A calm command center for your practice.'],
+  announcements: ['Announcements', 'Post messages every member sees on their dashboard.'],
   schedule: ['Schedule', 'Set availability and manage one-on-one sessions.'],
   payments: ['Payments', 'Verify receipts and approve enrollments.'],
   videos: ['Видео хичээлүүд', 'Хичээл нэмэх, засварлах, нийтлэх.'],
   tests: ['Сэтгэл зүйн тестүүд', 'Тест нэмэх, асуулт засварлах, нийтлэх.'],
   community: ['Community', 'Publish collective readings and moderate member posts.'],
-  members: ['Members', 'View subscribers and extend their access.'],
+  members: ['Members', 'View subscriber details, manage access, and review meeting orders.'],
 }
 </script>
 
@@ -73,6 +75,7 @@ const heads = {
         @menu="toggleSidebar"
       />
       <AdminOverview v-if="view === 'overview'" :pending="pending" @set-view="view = $event" />
+      <AdminAnnouncements v-else-if="view === 'announcements'" />
       <AdminSchedule v-else-if="view === 'schedule'" />
       <AdminPayments v-else-if="view === 'payments'" />
       <AdminVideos v-else-if="view === 'videos'" />

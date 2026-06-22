@@ -86,7 +86,7 @@ function fmtSlot(slot) {
                 <UiIcon name="calendar" :size="17" />
               </div>
               <div style="flex: 1; min-width: 0">
-                <div style="font-weight: 600; font-size: 14px">{{ a.service_type === 'tarot_reading' ? 'Тарот уншлага' : '1:1 Coaching' }}</div>
+                <div style="font-weight: 600; font-size: 14px">Онлайн уулзалт</div>
                 <div class="muted" style="font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ a.description || '—' }}</div>
               </div>
               <div style="text-align: right; font-size: 12.5px; flex-shrink: 0">

@@ -48,4 +48,3 @@ export function useLandingMotion() {
   })
 }
 
-export { EASE, HEADER_OFFSET }

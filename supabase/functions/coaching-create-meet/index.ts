@@ -44,8 +44,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, meetLink: slot.meet_link })
   }
 
-  const serviceLabel =
-    slot.service_type === 'tarot_reading' ? 'Тарот уншлага' : '1:1 Coaching'
+  const serviceLabel = 'Онлайн уулзалт'
 
   let meet
   try {

@@ -68,9 +68,8 @@ function confirmPicker() {
 }
 
 function goEnrollPayment() {
-  const slotServiceType = bookSlot.value?.serviceType
-  const serviceId = slotServiceType === 'tarot_reading' ? 'tarot' : slotServiceType === 'coaching' ? 'coaching' : 'tarot'
-  const intent = { serviceId };
+  // Landing booking is the personal reading (tarot); slots are typeless now.
+  const intent = { serviceId: 'tarot' };
   if (bookDate.value && bookSlot.value) {
     intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso };
     intent.bookSlot = bookSlot.value;

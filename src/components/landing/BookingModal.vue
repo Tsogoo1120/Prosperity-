@@ -6,6 +6,7 @@ import ImageSlot from '@/components/common/ImageSlot.vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import { useAvailableSlots } from '@/composables/useAvailableSlots.js'
+import { services } from '@/data/union.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -13,6 +14,11 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const { session } = useAuth()
+
+// The booking modal is a generic 1:1 meeting booking. Slots are typeless, so
+// the payment request is recorded against the coaching service so it surfaces
+// in the admin Payments queue alongside the Schedule booking request.
+const MEETING_SERVICE = services.find((s) => s.id === 'coaching')
 
 // step 0 = pick slot + topic, step 1 = payment upload, step 2 = success
 const step = ref(0)
@@ -116,6 +122,34 @@ async function submitPayment() {
     uploadErr.value = 'Захиалга хадгалахад алдаа. Дахин оролдоно уу.'
     uploading.value = false
     return
+  }
+
+  // Mirror the enroll flow: every meeting booking also creates a payment
+  // request so it appears in the admin Payments section. The slot is already
+  // claimed at this point, so a payment-insert failure must not block success —
+  // the booking still shows up as a Schedule request.
+  const { data: paymentRow } = await supabase
+    .from('payments')
+    .insert({
+      user_id: userId,
+      screenshot_path: path,
+      amount: MEETING_SERVICE?.price ?? null,
+      currency: 'MNT',
+      status: 'pending',
+      service_type: MEETING_SERVICE?.id ?? 'coaching',
+      bank_reference: 'TU-MEET',
+    })
+    .select('id')
+    .single()
+
+  // Fire-and-forget alerts — failures must not block the user
+  supabase.functions
+    .invoke('send-email', { body: { type: 'payment_received', userId, amount: MEETING_SERVICE?.price, currency: 'MNT' } })
+    .catch(() => {})
+  if (paymentRow?.id) {
+    supabase.functions
+      .invoke('send-email', { body: { type: 'admin_new_payment', userId, paymentId: paymentRow.id } })
+      .catch(() => {})
   }
 
   uploading.value = false

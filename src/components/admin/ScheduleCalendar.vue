@@ -9,15 +9,18 @@ const props = defineProps({
 })
 const emit = defineEmits(['slot-added'])
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
 const HH = 58
+
+// Slots have no end time in the UI — the coach knows when a session ends.
+// A fixed end_at is still stored so the Google Meet event has a duration and
+// the calendar can render a block.
+const SLOT_DURATION_MIN = 60
 
 const showAddSlot = ref(false)
 const newSlotDate = ref('')
 const newSlotStart = ref('09:00')
-const newSlotEnd = ref('10:00')
-const newSlotType = ref('coaching')
 const addSlotErr = ref('')
 const addingSlot = ref(false)
 
@@ -60,21 +63,17 @@ function slotDurMin(slot) {
   return (new Date(slot.end_at) - new Date(slot.start_at)) / 60000
 }
 
-function slotLabel(slot) {
-  return slot.service_type === 'tarot_reading' ? 'Тарот' : '1:1 Coaching'
+function slotLabel() {
+  return 'Онлайн уулзалт'
 }
 
 async function saveNewSlot() {
-  if (!newSlotDate.value || !newSlotStart.value || !newSlotEnd.value) {
-    addSlotErr.value = 'Огноо болон цагийг оруулна уу'
+  if (!newSlotDate.value || !newSlotStart.value) {
+    addSlotErr.value = 'Огноо болон эхлэх цагийг оруулна уу'
     return
   }
   const startDt = new Date(`${newSlotDate.value}T${newSlotStart.value}:00`)
-  const endDt = new Date(`${newSlotDate.value}T${newSlotEnd.value}:00`)
-  if (endDt <= startDt) {
-    addSlotErr.value = 'Дуусах цаг эхлэх цагаас хойш байх ёстой'
-    return
-  }
+  const endDt = new Date(startDt.getTime() + SLOT_DURATION_MIN * 60000)
   if (startDt <= new Date()) {
     addSlotErr.value = 'Эхлэх цаг ирээдүйд байх ёстой'
     return
@@ -95,7 +94,6 @@ async function saveNewSlot() {
     start_at: startDt.toISOString(),
     end_at: endDt.toISOString(),
     status: 'available',
-    service_type: newSlotType.value,
   })
   addingSlot.value = false
   if (error) { addSlotErr.value = error.message; return }
@@ -130,7 +128,7 @@ async function deleteSlot() {
 
 <template>
   <div class="scroll-y schedule-scroll" style="flex: 1; overflow-y: auto">
-    <div style="display: grid; grid-template-columns: 64px repeat(5, 1fr); min-width: 720px">
+    <div style="display: grid; grid-template-columns: 64px repeat(7, 1fr); min-width: 900px">
       <!-- header row -->
       <div style="border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 3" />
       <div
@@ -200,22 +198,9 @@ async function deleteSlot() {
             <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Огноо</label>
             <input v-model="newSlotDate" type="date" class="input" />
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px">
-            <div class="field">
-              <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Эхлэх цаг</label>
-              <input v-model="newSlotStart" type="time" class="input" />
-            </div>
-            <div class="field">
-              <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Дуусах цаг</label>
-              <input v-model="newSlotEnd" type="time" class="input" />
-            </div>
-          </div>
           <div class="field">
-            <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Төрөл</label>
-            <select v-model="newSlotType" class="input">
-              <option value="coaching">1:1 Coaching</option>
-              <option value="tarot_reading">Тарот уншлага</option>
-            </select>
+            <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Эхлэх цаг</label>
+            <input v-model="newSlotStart" type="time" class="input" />
           </div>
           <p v-if="addSlotErr" style="font-size: 13px; color: var(--bad); margin: 0">{{ addSlotErr }}</p>
           <button class="btn btn-primary btn-block" :disabled="addingSlot" @click="saveNewSlot">

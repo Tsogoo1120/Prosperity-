@@ -18,8 +18,8 @@ function fmtDate(iso) {
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
-function serviceLabel(type) {
-  return type === 'tarot_reading' ? 'Тарот уншлага' : '1:1 Coaching'
+function serviceLabel() {
+  return 'Онлайн уулзалт'
 }
 
 async function loadSessions() {
@@ -37,9 +37,8 @@ async function loadSessions() {
       id: s.id,
       date: fmtDate(s.start_at),
       time: fmtTime(s.start_at),
-      topic: serviceLabel(s.service_type),
+      topic: serviceLabel(),
       name: 'Dr. Maren',
-      dur: Math.round((new Date(s.end_at) - new Date(s.start_at)) / 60000),
       meetLink: s.meet_link ?? null,
     }))
   past.value = data
@@ -48,7 +47,7 @@ async function loadSessions() {
       id: s.id,
       date: fmtDate(s.start_at),
       time: fmtTime(s.start_at),
-      topic: serviceLabel(s.service_type),
+      topic: serviceLabel(),
       note: s.description || '—',
     }))
 }
@@ -112,7 +111,7 @@ onUnmounted(() => {
             @click="emit('book')"
           >
             <div style="font-weight: 600; font-size: 14px; color: var(--sage-deep); margin-bottom: 4px">
-              {{ serviceLabel(s.service_type) }}
+              {{ serviceLabel() }}
             </div>
             <div class="muted" style="font-size: 13px">
               {{ fmtDate(s.start_at) }} · {{ fmtTime(s.start_at) }}
@@ -138,7 +137,7 @@ onUnmounted(() => {
           <div style="width: 1px; height: 40px; background: var(--line)" />
           <div style="flex: 1; min-width: 0">
             <div style="font-weight: 600; font-size: 15.5px">{{ s.topic }}</div>
-            <div class="muted" style="font-size: 13.5px">{{ s.name }} · {{ s.dur }} min · Video call</div>
+            <div class="muted" style="font-size: 13.5px">{{ s.name }} · Video call</div>
           </div>
           </div>
           <div class="flex items-center flex-wrap" style="gap: 8px; width: 100%; sm:width: auto">

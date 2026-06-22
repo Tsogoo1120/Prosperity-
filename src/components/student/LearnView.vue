@@ -1,11 +1,17 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import VideoStage from './VideoStage.vue'
 import NotesPanel from './NotesPanel.vue'
+import { getLastLessonId, setLastLessonId } from '@/lib/lastLesson.js'
 
+// Optional deep-link target — the dashboard "continue watching" card passes the
+// lesson id it wants opened. Null falls back to the user's last-opened lesson.
+const props = defineProps({
+  initialLessonId: { type: String, default: null },
+})
 const emit = defineEmits(['set-view', 'menu'])
 
 const { session } = useAuth()
@@ -59,10 +65,26 @@ async function load() {
     .eq('is_published', true)
     .order('sort_order', { ascending: true })
   lessons.value = data ?? []
-  const currentId = active.value?.id
-  active.value = lessons.value.find((l) => l.id === currentId) ?? lessons.value[0]
+  // Pick which lesson to open, most-specific first: an explicit deep-link from
+  // the dashboard, then whatever is already active, then the user's last-opened
+  // lesson (resume), finally the first lesson.
+  const uid = session.value?.user?.id
+  const wantId = props.initialLessonId ?? active.value?.id ?? getLastLessonId(uid)
+  active.value = lessons.value.find((l) => l.id === wantId) ?? lessons.value[0]
   loading.value = false
 }
+
+// Persist whatever lesson is open so the dashboard can resume here next time.
+watch(active, (l) => {
+  if (l?.id) setLastLessonId(session.value?.user?.id, l.id)
+})
+
+// If the deep-link target changes while mounted, honor it.
+watch(() => props.initialLessonId, (id) => {
+  if (!id) return
+  const l = lessons.value.find((x) => x.id === id)
+  if (l) { active.value = l; playing.value = false }
+})
 
 async function toggleDone(lesson) {
   const uid = session.value?.user?.id

@@ -13,6 +13,7 @@ const emit = defineEmits(['set-view', 'nav', 'close', 'logout'])
 
 const items = [
   ['overview', 'grid', 'Overview'],
+  ['announcements', 'bell', 'Announcements'],
   ['schedule', 'calendar', 'Schedule'],
   ['payments', 'bank', 'Payments'],
   ['videos', 'video', 'Видео'],

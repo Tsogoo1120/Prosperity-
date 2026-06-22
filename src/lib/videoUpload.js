@@ -51,42 +51,6 @@ export async function uploadPublicImage(file, prefix = 'reading') {
   return { path }
 }
 
-export async function uploadIntroVideoToStorage(file, token, onProgress) {
-  const ext = (file.name.split('.').pop() ?? 'mp4').toLowerCase()
-  const path = `intro-${Date.now()}.${ext}`
-  const url = import.meta.env.VITE_SUPABASE_URL
-  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
-  if (!url) return { error: 'supabase_url_missing' }
-
-  // Resumable (tus) upload — required for large intro videos. supabase-js
-  // .upload() buffers the whole file in one request, which fails on 1 GB.
-  try {
-    await new Promise((resolve, reject) => {
-      const upload = new tus.Upload(file, {
-        endpoint: `${url}/storage/v1/upload/resumable`,
-        retryDelays: [0, 3000, 5000, 10000, 20000],
-        headers: { authorization: `Bearer ${token}`, apikey: anon, 'x-upsert': 'true' },
-        uploadDataDuringCreation: true,
-        removeFingerprintOnSuccess: true,
-        chunkSize: 6 * 1024 * 1024, // Supabase resumable requires exactly 6 MB chunks
-        metadata: {
-          bucketName: INTRO_BUCKET,
-          objectName: path,
-          contentType: file.type || 'video/mp4',
-          cacheControl: '3600',
-        },
-        onProgress: (sent, total) => { if (onProgress) onProgress(sent / total) },
-        onSuccess: () => resolve(),
-        onError: (err) => reject(err),
-      })
-      upload.start()
-    })
-  } catch (err) {
-    return { error: err?.message ?? 'intro upload failed' }
-  }
-  return { path }
-}
-
 function inferVideoContentType(file) {
   if (file.type) return file.type
   const ext = (file.name.split('.').pop() ?? '').toLowerCase()
@@ -126,7 +90,42 @@ export async function uploadVideoToR2(file, _bucket, variant, token) {
   return { key: data.key }
 }
 
+// tus PATCH chunk size. MUST be a multiple of 256 KiB and >= 5 MiB
+// (Cloudflare Stream requirement). We use the 5 MiB minimum: on mobile the
+// uplink is slow and drops often (cell handoffs, tunnels, the tab being
+// backgrounded), so the smaller each chunk is, the more likely it finishes
+// inside one "up" window — and on retry there is less data to re-send. CF
+// recommends 50 MiB only for "reliable connections" (desktop wifi); one size
+// has to serve both and the small one barely dents desktop throughput while
+// being what lets the upload survive cellular.
+const STREAM_CHUNK_SIZE = 5 * 1024 * 1024 // 5 MiB = 20 * 256 KiB (CF minimum)
+
+// Pull a human-readable reason out of a tus DetailedError. tus's own
+// err.message is opaque ("tus: failed to upload chunk …"); the actionable
+// detail is the HTTP status + body of the failed PATCH/POST to Cloudflare.
+function describeTusError(err) {
+  const res = err?.originalResponse
+  if (res) {
+    const status = typeof res.getStatus === 'function' ? res.getStatus() : ''
+    let body = ''
+    try { body = (typeof res.getBody === 'function' ? res.getBody() : '') || '' } catch { body = '' }
+    body = String(body).slice(0, 300)
+    if (status || body) return `Stream upload failed (HTTP ${status || '?'})${body ? `: ${body}` : ''}`
+  }
+  const msg = err?.message || 'Stream upload failed'
+  if (/load failed|network|failed to fetch/i.test(msg)) {
+    return 'Stream upload failed: network dropped mid-upload. Стабиль интернэтээр дахин оролдоно уу.'
+  }
+  return msg
+}
+
 export async function uploadVideoToCloudflareStream(file, variant, token, onProgress) {
+  // Some mobile pickers (iCloud / Google Drive files not yet downloaded
+  // locally) hand back a 0-byte File. tus would stall forever — fail fast.
+  if (!file || !file.size) {
+    return { error: 'Файл хоосон байна. Видеог төхөөрөмж рүүгээ татаж аваад дахин сонгоно уу.' }
+  }
+
   const { data, error } = await supabase.functions.invoke('stream-upload-url', {
     body: { filename: file.name, variant, size: file.size },
     headers: { Authorization: `Bearer ${token}` },
@@ -148,8 +147,26 @@ export async function uploadVideoToCloudflareStream(file, variant, token, onProg
     await new Promise((resolve, reject) => {
       const upload = new tus.Upload(file, {
         uploadUrl: data.uploadURL, // CF returned a pre-created tus resource
-        chunkSize: 52428800, // 50 MiB — must be a multiple of 256 KiB (Cloudflare requirement)
-        retryDelays: [0, 3000, 5000, 10000, 20000],
+        chunkSize: STREAM_CHUNK_SIZE,
+        // Cellular drops connections far more than wifi. Give tus many attempts
+        // with long backoff so a 30–60s dead spot (elevator, tunnel, switching
+        // apps) does not abort the whole upload — on each retry tus does a HEAD
+        // to read the server's offset and resumes from there, not from 0.
+        retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000, 60000, 60000],
+        // We always presign a fresh one-time URL, so there is nothing to resume
+        // across reloads. Disabling fingerprint storage avoids a localStorage
+        // write that throws in iOS Safari Private Mode and aborts the upload.
+        storeFingerprintForResuming: false,
+        // tus's default policy stops retrying on several errors that are in
+        // fact transient on mobile. Retry every network drop (no HTTP response)
+        // and every transient/server status; only give up on real client
+        // errors (bad request, auth, expired URL) that a retry cannot fix.
+        onShouldRetry(err) {
+          const status = err?.originalResponse?.getStatus?.() ?? 0
+          if (status === 0) return true // network drop — always retry
+          if (status === 409 || status === 423 || status === 429) return true
+          return status >= 500
+        },
         metadata: { name: file.name, filetype: file.type || 'video/mp4' },
         onProgress: (sent, total) => { if (onProgress) onProgress(sent / total) },
         onSuccess: () => resolve(),
@@ -158,7 +175,7 @@ export async function uploadVideoToCloudflareStream(file, variant, token, onProg
       upload.start()
     })
   } catch (err) {
-    return { error: err?.message ?? 'Stream upload failed' }
+    return { error: describeTusError(err) }
   }
 
   return { uid: data.uid }
@@ -170,31 +187,12 @@ export function getStreamIframeUrl(uid) {
   return `https://customer-${code}.cloudflarestream.com/${uid}/iframe`
 }
 
-export function getStreamHlsUrl(uid) {
-  const code = import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
-  if (!uid || !code) return null
-  return `https://customer-${code}.cloudflarestream.com/${uid}/manifest/video.m3u8`
-}
-
+// Auto-generated poster frame for a Stream video — used as a thumbnail fallback
+// when a lesson has no explicit thumbnail_path uploaded.
 export function getStreamThumbnailUrl(uid) {
   const code = import.meta.env.VITE_CLOUDFLARE_STREAM_CUSTOMER_CODE
   if (!uid || !code) return null
   return `https://customer-${code}.cloudflarestream.com/${uid}/thumbnails/thumbnail.jpg`
-}
-
-export async function getPresignDownloadUrl(lessonId, token, variant = 'desktop') {
-  const res = await fetch('/api/get-video-url', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ lessonId, variant }),
-  })
-  let data = null
-  try { data = await res.json() } catch { /* empty */ }
-  if (!res.ok) return { error: data?.error ?? `HTTP ${res.status}` }
-  return { url: data?.url ?? null }
 }
 
 export function readVideoDuration(file) {
