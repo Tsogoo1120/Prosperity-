@@ -17,3 +17,18 @@ ALTER TABLE public.psychology_tests
 
 ALTER TABLE public.collective_readings
   ADD COLUMN IF NOT EXISTS notified_at timestamptz;
+
+-- Backfill: content already published before this feature existed has already
+-- had its "first publish", so mark it notified to avoid a surprise blast when
+-- an old item is edited or re-toggled. Only brand-new publishes will email.
+UPDATE public.video_lessons
+  SET notified_at = COALESCE(published_at, now())
+  WHERE is_published = true AND notified_at IS NULL;
+
+UPDATE public.psychology_tests
+  SET notified_at = COALESCE(published_at, now())
+  WHERE is_published = true AND notified_at IS NULL;
+
+UPDATE public.collective_readings
+  SET notified_at = COALESCE(published_at, now())
+  WHERE is_published = true AND notified_at IS NULL;
