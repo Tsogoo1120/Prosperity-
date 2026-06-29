@@ -3,13 +3,21 @@ import UiLogo from '@/components/common/UiLogo.vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
 
-defineProps({
+const props = defineProps({
   view: { type: String, required: true },
   pending: { type: Number, default: 0 },
+  pendingMeetings: { type: Number, default: 0 },
   open: { type: Boolean, default: false },
   userName: { type: String, default: 'Admin' },
 })
 const emit = defineEmits(['set-view', 'nav', 'close', 'logout'])
+
+// Pending-work badge per nav item — payments awaiting review, meetings awaiting confirmation.
+function badgeFor(id) {
+  if (id === 'payments') return props.pending
+  if (id === 'schedule') return props.pendingMeetings
+  return 0
+}
 
 const items = [
   ['overview', 'grid', 'Overview'],
@@ -58,10 +66,13 @@ function pick(id) {
       >
         <UiIcon :name="ic" :size="20" /><span style="flex: 1">{{ lbl }}</span>
         <span
-          v-if="id === 'payments' && pending > 0"
+          v-if="badgeFor(id) > 0"
           class="chip"
-          style="background: var(--clay); color: #fff; border: none; padding: 2px 8px; font-size: 11px"
-          >{{ pending }}</span
+          :style="{
+            background: id === 'schedule' ? 'var(--warn)' : 'var(--clay)',
+            color: '#fff', border: 'none', padding: '2px 8px', fontSize: '11px',
+          }"
+          >{{ badgeFor(id) }}</span
         >
       </button>
     </nav>

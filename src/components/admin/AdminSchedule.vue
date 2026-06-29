@@ -53,6 +53,8 @@ async function loadSlots() {
   slots.value = data ?? []
 }
 
+let autoTabDone = false
+
 async function loadPendingRequests() {
   loadingPending.value = true
   const { data } = await supabase
@@ -62,6 +64,11 @@ async function loadPendingRequests() {
     .order('start_at', { ascending: true })
   pendingSlots.value = data ?? []
   loadingPending.value = false
+  // On first load, land on whichever tab has work waiting.
+  if (!autoTabDone) {
+    autoTabDone = true
+    if (pendingSlots.value.length) tab.value = 'requests'
+  }
 }
 
 function prevWeek() {

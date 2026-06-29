@@ -25,6 +25,7 @@ const userName = computed(() => {
 
 const view = ref('overview')
 const pending = ref(0)
+const pendingMeetings = ref(0)
 const { open: sidebarOpen, toggle: toggleSidebar, close: closeSidebar } = useSidebar()
 
 async function handleLogout() {
@@ -33,11 +34,12 @@ async function handleLogout() {
 }
 
 async function loadPending() {
-  const { count } = await supabase
-    .from('payments')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'pending')
-  pending.value = count ?? 0
+  const [{ count: pay }, { count: slots }] = await Promise.all([
+    supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('coaching_slots').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+  ])
+  pending.value = pay ?? 0
+  pendingMeetings.value = slots ?? 0
 }
 
 onMounted(loadPending)
@@ -61,6 +63,7 @@ const heads = {
     <AdminSidebar
       :view="view"
       :pending="pending"
+      :pending-meetings="pendingMeetings"
       :open="sidebarOpen"
       :user-name="userName"
       @set-view="view = $event"
@@ -74,7 +77,7 @@ const heads = {
         :sub="heads[view]?.[1] ?? ''"
         @menu="toggleSidebar"
       />
-      <AdminOverview v-if="view === 'overview'" :pending="pending" @set-view="view = $event" />
+      <AdminOverview v-if="view === 'overview'" :pending="pending" :pending-meetings="pendingMeetings" @set-view="view = $event" />
       <AdminAnnouncements v-else-if="view === 'announcements'" />
       <AdminSchedule v-else-if="view === 'schedule'" />
       <AdminPayments v-else-if="view === 'payments'" />

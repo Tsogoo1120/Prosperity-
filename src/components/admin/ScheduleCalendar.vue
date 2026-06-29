@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
 
@@ -18,11 +18,50 @@ const HH = 58
 // the calendar can render a block.
 const SLOT_DURATION_MIN = 60
 
+// Remembered default times so the coach isn't re-typing the same schedule
+// every day. Persisted in localStorage and pre-loaded into the bulk modal.
+const TEMPLATE_KEY = 'union_slot_template_times'
+function loadTemplateTimes() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '[]')
+    if (Array.isArray(raw) && raw.length) return raw
+  } catch { /* ignore */ }
+  return ['09:00', '10:00', '11:00']
+}
+
 const showAddSlot = ref(false)
-const newSlotDate = ref('')
-const newSlotStart = ref('09:00')
+// Times to create (one slot each). Shared across all selected days.
+const slotTimes = ref(loadTemplateTimes())
+const timeToAdd = ref('09:00')
+// Which days of the week in view to apply the times to (0 = Mon … 6 = Sun).
+const selectedDayIdx = ref([])
+// Repeat the same day/time pattern forward across N weeks (1 = this week only).
+const repeatWeeks = ref(1)
+const REPEAT_OPTS = [[1, 'Энэ долоо хоног'], [2, '2 долоо хоног'], [4, '4 долоо хоног'], [8, '8 долоо хоног']]
 const addSlotErr = ref('')
 const addingSlot = ref(false)
+
+const allDaysSelected = computed(() => selectedDayIdx.value.length === 7)
+
+function toggleDay(i) {
+  const arr = selectedDayIdx.value
+  selectedDayIdx.value = arr.includes(i) ? arr.filter((x) => x !== i) : [...arr, i].sort((a, b) => a - b)
+}
+
+function toggleAllDays() {
+  selectedDayIdx.value = allDaysSelected.value ? [] : [0, 1, 2, 3, 4, 5, 6]
+}
+
+function addTime() {
+  const t = timeToAdd.value
+  if (t && !slotTimes.value.includes(t)) {
+    slotTimes.value = [...slotTimes.value, t].sort()
+  }
+}
+
+function removeTime(t) {
+  slotTimes.value = slotTimes.value.filter((x) => x !== t)
+}
 
 // Managing an existing available slot (view → delete)
 const selectedSlot = ref(null)
@@ -38,8 +77,12 @@ function toISODate(d) {
 
 defineExpose({
   openAddSlot: () => {
-    // Prefill with the first day of the week currently in view.
-    if (!newSlotDate.value && props.weekDates?.length) newSlotDate.value = toISODate(props.weekDates[0])
+    // Default-select today if it's in the week in view, otherwise Monday.
+    const today = toISODate(new Date())
+    const idx = (props.weekDates || []).findIndex((d) => toISODate(d) === today)
+    selectedDayIdx.value = [idx >= 0 ? idx : 0]
+    repeatWeeks.value = 1
+    addSlotErr.value = ''
     showAddSlot.value = true
   },
 })
@@ -68,37 +111,79 @@ function slotLabel() {
 }
 
 async function saveNewSlot() {
-  if (!newSlotDate.value || !newSlotStart.value) {
-    addSlotErr.value = 'Огноо болон эхлэх цагийг оруулна уу'
+  if (!selectedDayIdx.value.length) {
+    addSlotErr.value = 'Дор хаяж нэг өдөр сонгоно уу'
     return
   }
-  const startDt = new Date(`${newSlotDate.value}T${newSlotStart.value}:00`)
-  const endDt = new Date(startDt.getTime() + SLOT_DURATION_MIN * 60000)
-  if (startDt <= new Date()) {
-    addSlotErr.value = 'Эхлэх цаг ирээдүйд байх ёстой'
+  if (!slotTimes.value.length) {
+    addSlotErr.value = 'Дор хаяж нэг цаг нэмнэ үү'
     return
   }
-  // Guard against overlapping an existing slot in the week in view.
-  const overlaps = props.slots.some((s) => {
-    const sStart = new Date(s.start_at).getTime()
-    const sEnd = new Date(s.end_at).getTime()
-    return startDt.getTime() < sEnd && endDt.getTime() > sStart
-  })
-  if (overlaps) {
-    addSlotErr.value = 'Энэ цаг өмнө нэмсэн цагтай давхцаж байна'
+  const now = new Date()
+  const existing = props.slots.map((s) => [new Date(s.start_at).getTime(), new Date(s.end_at).getTime()])
+  const rows = []
+  const built = [] // [startMs, endMs] for newly built rows, to dedupe within the batch
+  let skippedPast = 0
+  let skippedOverlap = 0
+
+  for (let w = 0; w < repeatWeeks.value; w++) {
+    for (const di of selectedDayIdx.value) {
+      const base = props.weekDates[di]
+      if (!base) continue
+      // Same weekday, w weeks forward.
+      const day = new Date(base)
+      day.setDate(day.getDate() + w * 7)
+      for (const t of slotTimes.value) {
+        const startDt = new Date(`${toISODate(day)}T${t}:00`)
+        const endDt = new Date(startDt.getTime() + SLOT_DURATION_MIN * 60000)
+        const sMs = startDt.getTime()
+        const eMs = endDt.getTime()
+        if (startDt <= now) { skippedPast++; continue }
+        const clash = [...existing, ...built].some(([xs, xe]) => sMs < xe && eMs > xs)
+        if (clash) { skippedOverlap++; continue }
+        built.push([sMs, eMs])
+        rows.push({ start_at: startDt.toISOString(), end_at: endDt.toISOString(), status: 'available' })
+      }
+    }
+  }
+
+  if (!rows.length) {
+    addSlotErr.value = skippedOverlap
+      ? 'Сонгосон бүх цаг өмнө нэмсэн цагтай давхцаж байна'
+      : 'Сонгосон цагууд аль хэдийн өнгөрсөн байна'
     return
   }
+
   addingSlot.value = true
   addSlotErr.value = ''
-  const { error } = await supabase.from('coaching_slots').insert({
-    start_at: startDt.toISOString(),
-    end_at: endDt.toISOString(),
-    status: 'available',
-  })
+
+  // Repeated weeks fall outside props.slots (only the visible week is loaded),
+  // so re-check the DB across the full inserted range to avoid duplicates on a
+  // second click.
+  const minStart = rows.reduce((m, r) => (r.start_at < m ? r.start_at : m), rows[0].start_at)
+  const maxEnd = rows.reduce((m, r) => (r.end_at > m ? r.end_at : m), rows[0].end_at)
+  const { data: dbExisting } = await supabase
+    .from('coaching_slots')
+    .select('start_at, end_at')
+    .in('status', ['available', 'pending', 'booked'])
+    .gte('start_at', minStart)
+    .lt('start_at', maxEnd)
+  const taken = new Set((dbExisting ?? []).map((s) => new Date(s.start_at).getTime()))
+  const finalRows = rows.filter((r) => !taken.has(new Date(r.start_at).getTime()))
+  if (!finalRows.length) {
+    addingSlot.value = false
+    addSlotErr.value = 'Эдгээр цаг аль хэдийн үүсгэгдсэн байна'
+    return
+  }
+
+  const { error } = await supabase.from('coaching_slots').insert(finalRows)
   addingSlot.value = false
   if (error) { addSlotErr.value = error.message; return }
+
+  // Remember these times as the new default for next time.
+  try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(slotTimes.value)) } catch { /* ignore */ }
+
   showAddSlot.value = false
-  newSlotDate.value = ''
   emit('slot-added')
 }
 
@@ -193,18 +278,82 @@ async function deleteSlot() {
             <UiIcon name="x" :size="18" />
           </button>
         </div>
-        <div style="padding: 26px; display: flex; flex-direction: column; gap: 16px">
+        <div style="padding: 26px; display: flex; flex-direction: column; gap: 18px">
+          <!-- Days: pick one, several, or the whole week at once -->
           <div class="field">
-            <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Огноо</label>
-            <input v-model="newSlotDate" type="date" class="input" />
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
+              <label style="font-size: 13px; font-weight: 600">Өдрүүд</label>
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                style="font-size: 12px; padding: 4px 10px"
+                @click="toggleAllDays"
+              >{{ allDaysSelected ? 'Цэвэрлэх' : 'Бүх долоо хоног' }}</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px">
+              <button
+                v-for="(d, i) in DAYS"
+                :key="d"
+                type="button"
+                @click="toggleDay(i)"
+                :style="{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                  padding: '8px 0', borderRadius: '9px', cursor: 'pointer',
+                  border: selectedDayIdx.includes(i) ? '1px solid var(--primary)' : '1px solid var(--line)',
+                  background: selectedDayIdx.includes(i) ? 'var(--primary)' : 'var(--card)',
+                  color: selectedDayIdx.includes(i) ? '#fff' : 'var(--muted)',
+                  fontWeight: 600,
+                }"
+              >
+                <span style="font-size: 10.5px">{{ d }}</span>
+                <span style="font-size: 13px">{{ weekDates[i].getDate() }}</span>
+              </button>
+            </div>
           </div>
+
+          <!-- Times: each becomes a slot on every selected day -->
           <div class="field">
-            <label style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block">Эхлэх цаг</label>
-            <input v-model="newSlotStart" type="time" class="input" />
+            <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block">Цагууд</label>
+            <div v-if="slotTimes.length" style="display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px">
+              <span
+                v-for="t in slotTimes"
+                :key="t"
+                style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 6px 5px 11px; border-radius: 999px; background: var(--surface-3); font-size: 13px; font-weight: 600"
+              >
+                {{ t }}
+                <button type="button" style="display: flex; border: none; background: transparent; cursor: pointer; padding: 2px; color: var(--muted)" @click="removeTime(t)">
+                  <UiIcon name="x" :size="13" />
+                </button>
+              </span>
+            </div>
+            <div style="display: flex; gap: 8px">
+              <input v-model="timeToAdd" type="time" class="input" style="flex: 1" @keyup.enter="addTime" />
+              <button type="button" class="btn btn-ghost" @click="addTime"><UiIcon name="plus" :size="15" /> Нэмэх</button>
+            </div>
           </div>
+
+          <!-- Repeat the same pattern forward across upcoming weeks -->
+          <div class="field">
+            <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block">Давтах</label>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px">
+              <button
+                v-for="[n, lbl] in REPEAT_OPTS"
+                :key="n"
+                type="button"
+                @click="repeatWeeks = n"
+                :style="{
+                  padding: '8px 0', borderRadius: '9px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600,
+                  border: repeatWeeks === n ? '1px solid var(--primary)' : '1px solid var(--line)',
+                  background: repeatWeeks === n ? 'var(--primary)' : 'var(--card)',
+                  color: repeatWeeks === n ? '#fff' : 'var(--muted)',
+                }"
+              >{{ lbl }}</button>
+            </div>
+          </div>
+
           <p v-if="addSlotErr" style="font-size: 13px; color: var(--bad); margin: 0">{{ addSlotErr }}</p>
           <button class="btn btn-primary btn-block" :disabled="addingSlot" @click="saveNewSlot">
-            {{ addingSlot ? 'Хадгалж байна…' : 'Нэмэх' }}
+            {{ addingSlot ? 'Хадгалж байна…' : `${slotTimes.length * selectedDayIdx.length * repeatWeeks} цаг үүсгэх` }}
           </button>
         </div>
       </div>

@@ -13,19 +13,34 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 
-const { session } = useAuth()
+const { session, profile } = useAuth()
 
-// The booking modal is a generic 1:1 meeting booking. Slots are typeless, so
-// the payment request is recorded against the coaching service so it surfaces
-// in the admin Payments queue alongside the Schedule booking request.
-const MEETING_SERVICE = services.find((s) => s.id === 'coaching')
+// User picks what they're booking: a tarot reading or a coaching session.
+// Each has its own price; the selection drives the payment amount + service_type
+// so the admin Payments queue shows exactly what was bought.
+const BOOKABLE = services.filter((s) => s.id === 'tarot' || s.id === 'coaching')
+const serviceId = ref('coaching')
+const meetingService = computed(
+  () => BOOKABLE.find((s) => s.id === serviceId.value) ?? BOOKABLE[0],
+)
 
-// step 0 = pick slot + topic, step 1 = payment upload, step 2 = success
+// step 0 = pick service + slot + topic, step 1 = payment upload, step 2 = success
 const step = ref(0)
 const bookDate = ref(null)
 const bookSlot = ref(null)
 const topic = ref('')
 const bookingErr = ref('')
+
+// Guest contact — booking does not require login. A guest signs in
+// anonymously on submit, so we still collect name + email here to let the
+// admin reach them with the Meet link.
+const guestName = ref('')
+const guestEmail = ref('')
+const guestPhone = ref('')
+
+function isValidEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v ?? '').trim())
+}
 
 // payment upload state
 const receiptFile = ref(null)
@@ -44,10 +59,14 @@ watch(
   (v) => {
     if (v) {
       step.value = 0
+      serviceId.value = 'coaching'
       bookSlot.value = null
       bookingErr.value = ''
       uploadErr.value = ''
       topic.value = ''
+      guestName.value = profile.value?.full_name ?? ''
+      guestEmail.value = profile.value?.email ?? session.value?.user?.email ?? ''
+      guestPhone.value = profile.value?.phone ?? ''
       receiptFile.value = null
       bookDate.value = availDays.value[0] ?? null
       loadAvailableSlots()
@@ -71,13 +90,17 @@ function subscribeRealtime() {
 onMounted(() => { loadAvailableSlots(); subscribeRealtime() })
 onUnmounted(() => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) })
 
-// Step 0 → 1: validate selection, do NOT touch DB yet
+// Step 0 → 1: validate selection + guest contact, do NOT touch DB yet.
+// No login required — a guest signs in anonymously at submit time.
 function confirmBooking() {
   if (!bookDate.value || !bookSlot.value) return
   bookingErr.value = ''
-  const userId = session.value?.user?.id
-  if (!userId) {
-    bookingErr.value = 'Нэвтэрч орно уу.'
+  if (!guestName.value.trim()) {
+    bookingErr.value = 'Нэрээ оруулна уу.'
+    return
+  }
+  if (!isValidEmail(guestEmail.value)) {
+    bookingErr.value = 'Имэйл хаягаа зөв оруулна уу.'
     return
   }
   step.value = 1
@@ -86,11 +109,32 @@ function confirmBooking() {
 // Step 1 → 2: upload receipt then claim the slot
 async function submitPayment() {
   uploadErr.value = ''
-  const userId = session.value?.user?.id
-  if (!userId) { uploadErr.value = 'Нэвтэрч орно уу.'; return }
   if (!receiptFile.value) { uploadErr.value = 'Баримтын зурагийг хавсаргана уу.'; return }
 
   uploading.value = true
+
+  // Ensure a session. Guests get a real (anonymous) auth user so all existing
+  // user_id / RLS / storage-path rules keep working without a login UX.
+  let userId = session.value?.user?.id
+  if (!userId) {
+    const { data: anon, error: anonError } = await supabase.auth.signInAnonymously()
+    if (anonError || !anon?.user) {
+      uploadErr.value = 'Нэвтрэхэд алдаа: ' + (anonError?.message ?? 'тодорхойгүй')
+      uploading.value = false
+      return
+    }
+    userId = anon.user.id
+  }
+
+  // Persist guest contact so the admin can email the Meet link.
+  await supabase
+    .from('profiles')
+    .update({
+      full_name: guestName.value.trim(),
+      email: guestEmail.value.trim(),
+      phone: guestPhone.value.trim() || null,
+    })
+    .eq('id', userId)
 
   const file = receiptFile.value
   const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
@@ -111,6 +155,7 @@ async function submitPayment() {
     .update({
       status: 'pending',
       user_id: userId,
+      service_type: meetingService.value?.id ?? 'coaching',
       description: topic.value || null,
       payment_screenshot_path: path,
     })
@@ -133,10 +178,10 @@ async function submitPayment() {
     .insert({
       user_id: userId,
       screenshot_path: path,
-      amount: MEETING_SERVICE?.price ?? null,
+      amount: meetingService.value?.price ?? null,
       currency: 'MNT',
       status: 'pending',
-      service_type: MEETING_SERVICE?.id ?? 'coaching',
+      service_type: meetingService.value?.id ?? 'coaching',
       bank_reference: 'TU-MEET',
     })
     .select('id')
@@ -144,7 +189,7 @@ async function submitPayment() {
 
   // Fire-and-forget alerts — failures must not block the user
   supabase.functions
-    .invoke('send-email', { body: { type: 'payment_received', userId, amount: MEETING_SERVICE?.price, currency: 'MNT' } })
+    .invoke('send-email', { body: { type: 'payment_received', userId, amount: meetingService.value?.price, currency: 'MNT' } })
     .catch(() => {})
   if (paymentRow?.id) {
     supabase.functions
@@ -186,8 +231,26 @@ async function submitPayment() {
         </button>
       </div>
 
-      <!-- Step 0: pick slot + topic -->
+      <!-- Step 0: pick service + slot + topic -->
       <div v-if="step === 0" style="padding: 26px">
+        <div class="kicker cool" style="margin-bottom: 14px">Үйлчилгээ сонгох</div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 26px">
+          <button
+            v-for="svc in BOOKABLE"
+            :key="svc.id"
+            type="button"
+            class="svccell"
+            :style="{
+              borderColor: serviceId === svc.id ? 'var(--primary)' : 'var(--line)',
+              background: serviceId === svc.id ? 'var(--primary-tint)' : 'var(--card)',
+              color: serviceId === svc.id ? 'var(--primary-deep)' : 'var(--ink)',
+            }"
+            @click="serviceId = svc.id"
+          >
+            <span style="font-weight: 600; font-size: 14.5px">{{ svc.title }}</span>
+            <span style="font-size: 13px; opacity: 0.75">{{ svc.priceDisplay }}</span>
+          </button>
+        </div>
         <div class="kicker cool" style="margin-bottom: 14px">Өдөр сонгох</div>
         <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">
           <button
@@ -226,6 +289,18 @@ async function submitPayment() {
         </div>
         <p v-else-if="bookDate" class="muted" style="font-size: 14px">Энэ өдөрт боломжит цаг байхгүй эсвэл бүгд захиалагдсан байна.</p>
         <div class="field" style="margin-top: 22px">
+          <label>Нэр <span style="color: var(--clay)">*</span></label>
+          <input v-model="guestName" class="input" placeholder="Таны нэр" />
+        </div>
+        <div class="field" style="margin-top: 14px">
+          <label>Имэйл <span style="color: var(--clay)">*</span></label>
+          <input v-model="guestEmail" type="email" class="input" placeholder="name@example.com" />
+        </div>
+        <div class="field" style="margin-top: 14px">
+          <label>Утас <span class="muted" style="font-weight: 400">(optional)</span></label>
+          <input v-model="guestPhone" type="tel" class="input" placeholder="9911-2233" />
+        </div>
+        <div class="field" style="margin-top: 14px">
           <label>What would you like to focus on? <span class="muted" style="font-weight: 400">(optional)</span></label>
           <input v-model="topic" class="input" placeholder="e.g. career direction, managing stress…" />
         </div>
@@ -250,7 +325,7 @@ async function submitPayment() {
           style="gap: 10px; padding: 12px 14px; background: var(--primary-tint); border-radius: 12px; margin-bottom: 22px; font-size: 14px; color: var(--primary-deep)"
         >
           <UiIcon name="calendar" :size="16" />
-          <span style="font-weight: 600">{{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}</span>
+          <span style="font-weight: 600">{{ meetingService?.title }} · {{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }} · {{ meetingService?.priceDisplay }}</span>
         </div>
 
         <!-- bank transfer info -->
@@ -319,7 +394,7 @@ async function submitPayment() {
         </div>
         <h3 style="font-size: 24px; margin-bottom: 10px">Захиалга илгээгдлээ.</h3>
         <p class="muted" style="max-width: 360px; margin: 0 auto 6px; font-size: 15px">
-          {{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}. Баримтыг шалгасны дараа хариу болон Google Meet линкийг имэйлээр илгээнэ.
+          {{ meetingService?.title }} · {{ bookDate?.d }} {{ bookDate?.n }} · {{ bookSlot?.time }}. Баримтыг шалгасны дараа хариу болон Google Meet линкийг имэйлээр илгээнэ.
         </p>
         <button class="btn btn-ghost" style="margin-top: 22px" @click="emit('close')">Хаах</button>
       </div>
@@ -366,6 +441,20 @@ async function submitPayment() {
 }
 .slotcell:hover {
   border-color: var(--clay);
+}
+.svccell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  border: 1.5px solid;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.svccell:hover {
+  border-color: var(--primary);
 }
 @media (max-width: 767px) {
   .slot-grid {

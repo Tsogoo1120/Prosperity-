@@ -7,8 +7,12 @@ import StatCard from '@/components/student/StatCard.vue'
 
 const props = defineProps({
   pending: { type: Number, default: 0 },
+  pendingMeetings: { type: Number, default: 0 },
 })
 const emit = defineEmits(['set-view'])
+
+// Each stat is a one-click jump into the view it summarizes.
+const statViews = ['payments', 'videos', 'tests', 'members']
 
 const appts = ref([])
 const statsData = ref([
@@ -51,26 +55,60 @@ function fmtSlot(slot) {
   <div class="scroll-y" style="flex: 1; overflow-y: auto; height: calc(100vh - 72px)">
     <div class="page-inset-narrow">
       <div class="grid-admin-4" style="margin-bottom: 26px">
-        <div v-for="(s, i) in statsData" :key="i" class="rise" :style="{ animationDelay: i * 0.05 + 's' }">
+        <div
+          v-for="(s, i) in statsData"
+          :key="i"
+          class="rise stat-jump"
+          :style="{ animationDelay: i * 0.05 + 's' }"
+          @click="emit('set-view', statViews[i])"
+        >
           <StatCard v-bind="s" />
         </div>
       </div>
       <div class="grid-admin-2">
-        <!-- pending payments card -->
+        <!-- needs-attention inbox: every pending queue in one place -->
         <div class="card card-pad rise d1" style="border-radius: 16px">
-          <div class="flex items-center justify-between" style="margin-bottom: 16px">
-            <h3 style="font-size: 18px">Анхаарал шаардлагатай</h3>
-            <button class="btn btn-soft btn-sm" @click="emit('set-view', 'payments')">Дараалал харах</button>
-          </div>
-          <div style="background: var(--clay-tint); border-radius: 12px; padding: 16px; display: flex; gap: 13px; align-items: center">
-            <div style="width: 42px; height: 42px; border-radius: 10px; background: var(--clay); color: #fff; display: flex; align-items: center; justify-content: center">
-              <UiIcon name="bank" :size="21" />
+          <h3 style="font-size: 18px; margin-bottom: 16px">Анхаарал шаардлагатай</h3>
+
+          <div class="flex flex-col" style="gap: 10px">
+            <!-- pending payments -->
+            <button
+              v-if="pending > 0"
+              class="attn-row"
+              style="background: var(--clay-tint)"
+              @click="emit('set-view', 'payments')"
+            >
+              <div class="attn-icon" style="background: var(--clay)"><UiIcon name="bank" :size="21" /></div>
+              <div style="flex: 1; text-align: left">
+                <div style="font-weight: 600">{{ pending }} төлбөрийн баримт</div>
+                <div style="font-size: 13px; color: var(--clay-deep)">Элсэлт хүлээж буй оюутнууд</div>
+              </div>
+              <UiIcon name="chevRight" :size="20" style="color: var(--clay-deep)" />
+            </button>
+
+            <!-- pending meeting bookings -->
+            <button
+              v-if="pendingMeetings > 0"
+              class="attn-row"
+              style="background: var(--warn-tint)"
+              @click="emit('set-view', 'schedule')"
+            >
+              <div class="attn-icon" style="background: var(--warn)"><UiIcon name="calendar" :size="21" /></div>
+              <div style="flex: 1; text-align: left">
+                <div style="font-weight: 600">{{ pendingMeetings }} уулзалтын хүсэлт</div>
+                <div style="font-size: 13px; color: var(--warn)">Баталгаажуулахыг хүлээж байна</div>
+              </div>
+              <UiIcon name="chevRight" :size="20" style="color: var(--warn)" />
+            </button>
+
+            <!-- all clear -->
+            <div
+              v-if="pending === 0 && pendingMeetings === 0"
+              style="background: var(--sage-tint); border-radius: 12px; padding: 16px; display: flex; gap: 13px; align-items: center"
+            >
+              <div class="attn-icon" style="background: var(--sage-deep)"><UiIcon name="check" :size="21" /></div>
+              <div style="font-weight: 600; color: var(--sage-deep)">Бүх хүсэлт шийдэгдсэн</div>
             </div>
-            <div style="flex: 1">
-              <div style="font-weight: 600">{{ pending }} төлбөрийн баримт</div>
-              <div style="font-size: 13px; color: var(--clay-deep)">Элсэлт хүлээж буй оюутнууд</div>
-            </div>
-            <UiIcon name="chevRight" :size="20" style="color: var(--clay-deep); cursor: pointer" @click="emit('set-view', 'payments')" />
           </div>
         </div>
 
@@ -101,23 +139,43 @@ function fmtSlot(slot) {
         </div>
       </div>
 
-      <!-- quick actions -->
-      <div class="grid-admin-2" style="margin-top: 22px">
-        <div class="card card-pad rise d3" style="border-radius: 16px">
-          <h3 style="font-size: 16px; margin-bottom: 14px">Хурдан үйлдлүүд</h3>
-          <div class="flex flex-col" style="gap: 8px">
-            <button class="btn btn-ghost btn-sm" style="justify-content: flex-start; gap: 12px" @click="emit('set-view', 'videos')">
-              <UiIcon name="video" :size="18" style="color: var(--primary)" /> Видео хичээл нэмэх
-            </button>
-            <button class="btn btn-ghost btn-sm" style="justify-content: flex-start; gap: 12px" @click="emit('set-view', 'tests')">
-              <UiIcon name="compass" :size="18" style="color: var(--sage-deep)" /> Тест нэмэх
-            </button>
-            <button class="btn btn-ghost btn-sm" style="justify-content: flex-start; gap: 12px" @click="emit('set-view', 'payments')">
-              <UiIcon name="bank" :size="18" style="color: var(--clay)" /> Төлбөрүүд шалгах
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.stat-jump {
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+.stat-jump:hover {
+  transform: translateY(-2px);
+}
+.stat-jump:active {
+  transform: translateY(0);
+}
+.attn-row {
+  border: none;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  cursor: pointer;
+  width: 100%;
+  transition: filter 0.14s ease;
+}
+.attn-row:hover {
+  filter: brightness(0.97);
+}
+.attn-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+</style>

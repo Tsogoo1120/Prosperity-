@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import UiIcon from '@/components/common/UiIcon.vue'
@@ -35,7 +35,8 @@ async function loadPayments() {
 
   if (!error && data) {
     list.value = data
-    if (!sel.value && data.length) sel.value = data[0]
+    // Land on the first item that actually needs action, not just the newest.
+    if (!sel.value && data.length) sel.value = data.find((p) => p.status === 'pending') || data[0]
     else if (sel.value) {
       // Refresh selected item
       const refreshed = data.find((p) => p.id === sel.value.id)
@@ -56,11 +57,44 @@ async function loadScreenshot(payment) {
 
 watch(sel, (p) => { if (p) loadScreenshot(p) })
 
-onMounted(loadPayments)
+function onKey(e) {
+  if (!list.value.length) return
+  const tag = (e.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea') return
+  const idx = list.value.findIndex((p) => p.id === sel.value?.id)
+  if (e.key === 'ArrowDown' || e.key === 'j') {
+    e.preventDefault()
+    selectPayment(list.value[Math.min(idx + 1, list.value.length - 1)])
+  } else if (e.key === 'ArrowUp' || e.key === 'k') {
+    e.preventDefault()
+    selectPayment(list.value[Math.max(idx - 1, 0)])
+  } else if ((e.key === 'a' || e.key === 'A') && sel.value?.status === 'pending' && !acting.value) {
+    approvePayment()
+  } else if ((e.key === 'd' || e.key === 'D') && sel.value?.status === 'pending' && !acting.value) {
+    denyPayment()
+  }
+}
+
+onMounted(() => {
+  loadPayments()
+  window.addEventListener('keydown', onKey)
+})
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 function selectPayment(p) {
+  if (!p) return
   sel.value = p
   actError.value = ''
+}
+
+// After acting on a payment, jump to the next one still awaiting review so the
+// admin can clear the queue without reaching for the mouse between each.
+function advanceToNextPending(prevId) {
+  const idx = list.value.findIndex((p) => p.id === prevId)
+  const next =
+    (idx >= 0 && list.value.slice(idx + 1).find((p) => p.status === 'pending')) ||
+    list.value.find((p) => p.status === 'pending')
+  if (next) selectPayment(next)
 }
 
 function fmtDate(iso) {
@@ -145,6 +179,7 @@ async function approvePayment() {
 
   acting.value = false
   await loadPayments()
+  advanceToNextPending(payment.id)
 }
 
 async function denyPayment() {
@@ -182,6 +217,7 @@ async function denyPayment() {
 
   acting.value = false
   await loadPayments()
+  advanceToNextPending(payment.id)
 }
 </script>
 
@@ -310,6 +346,9 @@ async function denyPayment() {
             <div class="flex items-center" style="gap: 8px; font-size: 13.5px; color: var(--ink-soft)">
               <UiIcon name="shield" :size="18" style="color: var(--sage-deep)" />
               Дүн болон лавлагааг шалгасны дараа батална уу.
+              <span class="hide-mobile muted" style="font-size: 12px; margin-left: 2px">
+                · <kbd>A</kbd> батлах · <kbd>D</kbd> татгалзах · <kbd>↑↓</kbd> шилжих
+              </span>
             </div>
             <div class="flex items-center" style="gap: 10px">
               <button
@@ -364,3 +403,15 @@ async function denyPayment() {
     </div>
   </div>
 </template>
+
+<style scoped>
+kbd {
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--ink-soft);
+}
+</style>

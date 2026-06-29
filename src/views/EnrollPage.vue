@@ -25,6 +25,7 @@ const pendingPrefill = ref(null)
 
 const submitting = ref(false)
 const submitError = ref('')
+const slotTakenNotice = ref('')
 
 const DISCOUNT_RATE = 0.3
 
@@ -87,7 +88,10 @@ const availDays = computed(() => Object.values(dayMap.value))
 const currentMonthLabel = computed(() => {
   if (!availDays.value.length) return ''
   const first = availDays.value[0]
-  return `${MONTH_NAMES[first.m]}`
+  const last = availDays.value[availDays.value.length - 1]
+  return first.m === last.m
+    ? MONTH_NAMES[first.m]
+    : `${MONTH_NAMES[first.m]} – ${MONTH_NAMES[last.m]}`
 })
 
 const currentItems = computed(() => {
@@ -105,14 +109,15 @@ function subscribeRealtime() {
 
 onUnmounted(() => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) })
 
-const bookingComplete = computed(() => Boolean(bookDate.value && bookSlot.value))
-
 const stepSequence = computed(() => {
-  const withBooking = selectedService.value.requiresBooking
-    ? ['plan', 'account', 'booking', 'payment', 'review']
+  // Slot first, login gate second: user commits to a time before Google login,
+  // so they never authenticate just to discover no slot exists.
+  const full = selectedService.value.requiresBooking
+    ? ['plan', 'booking', 'account', 'payment', 'review']
     : ['plan', 'account', 'payment', 'review']
-  if (bookingComplete.value) return withBooking.filter((s) => s !== 'booking')
-  return withBooking
+  // Slot already chosen on the landing page → skip the booking step here.
+  if (bookingFromLanding.value) return full.filter((s) => s !== 'booking')
+  return full
 })
 
 const stepLabels = computed(() => stepSequence.value.map((s) => STEP_LABELS[s]))
@@ -206,16 +211,35 @@ function applyBookingPrefill(source) {
   }
 }
 
-// Retry prefill after rawSlots loads — at mount time slots aren't loaded yet
+// Runs whenever the available-slots list changes (initial load + realtime).
 watch(rawSlots, () => {
-  if (bookSlot.value) return // already applied
-  if (pendingPrefill.value) {
+  // 1. Restore a slot the user picked on the landing page (slots weren't loaded
+  //    at mount, so retry once they arrive).
+  if (!bookSlot.value && pendingPrefill.value) {
     applyBookingPrefill(pendingPrefill.value)
-    return
   }
-  const prefillRaw = sessionStorage.getItem('union-booking-prefill')
-  if (prefillRaw) {
-    try { applyBookingPrefill(JSON.parse(prefillRaw)) } catch(e) {}
+  // 2. Auto-select the first available day so the booking step opens on a
+  //    populated time grid instead of an empty "pick a day" state.
+  if (!bookDate.value && !pendingPrefill.value && availDays.value.length) {
+    bookDate.value = availDays.value[0]
+  }
+  // 3. If the slot the user already picked just got claimed by someone else,
+  //    clear it and send them back to choose again — before they pay for it.
+  if (
+    bookSlot.value &&
+    !submitting.value &&
+    (stepType.value === 'booking' || stepType.value === 'payment')
+  ) {
+    const stillOpen = rawSlots.value.some((s) => s.id === bookSlot.value.id)
+    if (!stillOpen) {
+      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
+      bookSlot.value = null
+      bookingFromLanding.value = false // re-reveal the booking step if it was skipped
+      nextTick(() => {
+        const bi = stepSequence.value.indexOf('booking')
+        if (bi >= 0 && step.value > bi) step.value = bi
+      })
+    }
   }
 })
 
@@ -693,6 +717,13 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
           {{ selectedService.id === 'tarot' ? '30 минут · Онлайн уулзалт' : '1 цаг · Онлайн уулзалт' }}
         </p>
         <div class="card card-pad" style="border-radius: 16px">
+          <p
+            v-if="slotTakenNotice"
+            class="flex items-center"
+            style="gap: 8px; margin: 0 0 16px; padding: 10px 14px; background: var(--bad-tint); border-radius: 10px; font-size: 13.5px; color: var(--bad)"
+          >
+            <UiIcon name="x" :size="15" style="flex: none" /> {{ slotTakenNotice }}
+          </p>
           <div class="kicker cool" style="margin-bottom: 14px">{{ currentMonthLabel || 'Ажиллах өдрүүд' }}</div>
           <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">
             <button
@@ -725,7 +756,7 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
                 background: bookSlot?.id === s.id ? 'var(--clay)' : 'var(--card)',
                 color: bookSlot?.id === s.id ? '#fff' : 'var(--ink)',
               }"
-              @click="bookSlot = s"
+              @click="bookSlot = s; slotTakenNotice = ''"
             >
               {{ s.time }}
             </button>
@@ -739,7 +770,7 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
             style="gap: 8px; margin-top: 16px; padding: 12px 14px; background: var(--good-tint); border-radius: 10px; font-size: 14px; color: var(--good)"
           >
             <UiIcon name="checkCircle" :size="17" />
-            {{ bookDate.d }} {{ bookDate.n }}-нд {{ bookSlot.time }} цагт захиалгасан
+            {{ bookDate.d }} {{ bookDate.n }}-нд {{ bookSlot.time }} цаг сонгогдлоо
           </div>
         </div>
       </div>
@@ -747,6 +778,15 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
       <!-- ═══════════════════════ STEP 3 — Payment ═══════════════════════ -->
       <div v-else-if="stepType === 'payment'" class="rise grid-split-enroll-pay enroll-step-content enroll-step-content--payment">
         <div>
+          <!-- chosen-slot recap so the user confirms the meeting before paying -->
+          <div
+            v-if="bookDate && bookSlot"
+            class="flex items-center"
+            style="gap: 10px; padding: 12px 14px; background: var(--primary-tint); border-radius: 12px; margin-bottom: 18px; font-size: 14px; color: var(--primary-deep)"
+          >
+            <UiIcon name="calendar" :size="16" style="flex: none" />
+            <span style="font-weight: 600">{{ selectedService.title }} · {{ bookDate.d }} {{ bookDate.n }} · {{ bookSlot.time }}</span>
+          </div>
           <h2 class="enroll-step-title">Банкны шилжүүлэг</h2>
           <p class="enroll-step-lead muted">
             Дор дурдсан дансруу шилжүүлэг хийж, баримтын зурагийг хавсаргана уу.
