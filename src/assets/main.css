@@ -1218,4 +1218,49 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Admin schedule: compact topbar, full-width tab pills, stacked actions */
+  .admin-sched-topbar {
+    padding: 12px 14px !important;
+    gap: 10px !important;
+  }
+  .admin-sched-tabs {
+    width: 100%;
+  }
+  .admin-sched-tabs > button {
+    flex: 1;
+    justify-content: center;
+  }
+  .admin-sched-add {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+  .admin-sched-add .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .admin-sched-banner {
+    margin: 10px 14px 0 !important;
+  }
+
+  /* Booking request cards: full-width approve/deny tap targets */
+  .sched-req-actions {
+    flex-direction: column-reverse;
+    align-items: stretch !important;
+  }
+  .sched-req-actions .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
+  }
+
+  /* History rows: times align left under the user block */
+  .sched-history-times {
+    text-align: left !important;
+    width: 100%;
+  }
+  .sched-history-times > div {
+    justify-content: flex-start !important;
+  }
 }

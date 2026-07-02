@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
   }
 
   const { type } = body
+  // Set by cases that want to report delivery status back to the caller.
+  let emailSent: boolean | undefined
 
   try {
     switch (type) {
@@ -234,7 +236,7 @@ Deno.serve(async (req) => {
           adminNote: adminNote ?? null,
           meetLink: (slot as any).meet_link ?? null,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
+        emailSent = await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
@@ -260,7 +262,7 @@ Deno.serve(async (req) => {
           slotStartAt: slot.start_at,
           adminNote: adminNote ?? null,
         })
-        await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
+        emailSent = await sendOne(profile.email, tpl.subject, tpl.html, tpl.text, 'send-email')
         break
       }
 
@@ -300,7 +302,7 @@ Deno.serve(async (req) => {
     return new Response('Internal error', { status: 500 })
   }
 
-  return new Response(JSON.stringify({ ok: true }), {
+  return new Response(JSON.stringify({ ok: true, emailSent }), {
     headers: { ...CORS, 'Content-Type': 'application/json' },
   })
 })

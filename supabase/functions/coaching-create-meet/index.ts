@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   if (slot.meet_link) {
     const { error } = await admin
       .from('coaching_slots')
-      .update({ status: 'booked' })
+      .update({ status: 'booked', decided_at: new Date().toISOString() })
       .eq('id', slotId)
     if (error) return json({ error: 'update_failed', detail: error.message }, 500)
     return json({ ok: true, meetLink: slot.meet_link })
@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
       status: 'booked',
       meet_link: meet.meetLink,
       google_event_id: meet.eventId,
+      decided_at: new Date().toISOString(),
     })
     .eq('id', slotId)
 

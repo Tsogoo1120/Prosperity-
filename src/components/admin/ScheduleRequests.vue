@@ -74,7 +74,7 @@ function fmtDt(iso) {
                 Батлахад Google Meet линк автоматаар үүсч имэйлээр илгээгдэнэ.
               </div>
 
-              <div class="flex items-center" style="gap: 8px">
+              <div class="flex items-center sched-req-actions" style="gap: 8px">
                 <button
                   class="btn btn-ghost btn-sm"
                   style="color: var(--bad); border-color: var(--bad-tint)"
