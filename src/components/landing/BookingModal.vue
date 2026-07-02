@@ -15,11 +15,11 @@ const emit = defineEmits(['close'])
 
 const { session, profile } = useAuth()
 
-// User picks what they're booking: a tarot reading or a coaching session.
-// Each has its own price; the selection drives the payment amount + service_type
-// so the admin Payments queue shows exactly what was bought.
-const BOOKABLE = services.filter((s) => s.id === 'tarot' || s.id === 'coaching')
-const serviceId = ref('coaching')
+// Meeting services drive the payment amount + service_type so the admin
+// Payments queue shows exactly what was bought. Currently only tarot readings
+// are bookable here.
+const BOOKABLE = services.filter((s) => s.requiresBooking)
+const serviceId = ref(BOOKABLE[0]?.id ?? 'tarot')
 const meetingService = computed(
   () => BOOKABLE.find((s) => s.id === serviceId.value) ?? BOOKABLE[0],
 )
@@ -59,7 +59,7 @@ watch(
   (v) => {
     if (v) {
       step.value = 0
-      serviceId.value = 'coaching'
+      serviceId.value = BOOKABLE[0]?.id ?? 'tarot'
       bookSlot.value = null
       bookingErr.value = ''
       uploadErr.value = ''
@@ -155,7 +155,7 @@ async function submitPayment() {
     .update({
       status: 'pending',
       user_id: userId,
-      service_type: meetingService.value?.id ?? 'coaching',
+      service_type: meetingService.value?.id ?? 'tarot',
       description: topic.value || null,
       payment_screenshot_path: path,
     })
@@ -181,7 +181,7 @@ async function submitPayment() {
       amount: meetingService.value?.price ?? null,
       currency: 'MNT',
       status: 'pending',
-      service_type: meetingService.value?.id ?? 'coaching',
+      service_type: meetingService.value?.id ?? 'tarot',
       bank_reference: 'TU-MEET',
     })
     .select('id')
@@ -233,23 +233,33 @@ async function submitPayment() {
 
       <!-- Step 0: pick service + slot + topic -->
       <div v-if="step === 0" style="padding: 26px">
-        <div class="kicker cool" style="margin-bottom: 14px">Үйлчилгээ сонгох</div>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 26px">
-          <button
-            v-for="svc in BOOKABLE"
-            :key="svc.id"
-            type="button"
-            class="svccell"
-            :style="{
-              borderColor: serviceId === svc.id ? 'var(--primary)' : 'var(--line)',
-              background: serviceId === svc.id ? 'var(--primary-tint)' : 'var(--card)',
-              color: serviceId === svc.id ? 'var(--primary-deep)' : 'var(--ink)',
-            }"
-            @click="serviceId = svc.id"
-          >
-            <span style="font-weight: 600; font-size: 14.5px">{{ svc.title }}</span>
-            <span style="font-size: 13px; opacity: 0.75">{{ svc.priceDisplay }}</span>
-          </button>
+        <template v-if="BOOKABLE.length > 1">
+          <div class="kicker cool" style="margin-bottom: 14px">Үйлчилгээ сонгох</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 26px">
+            <button
+              v-for="svc in BOOKABLE"
+              :key="svc.id"
+              type="button"
+              class="svccell"
+              :style="{
+                borderColor: serviceId === svc.id ? 'var(--primary)' : 'var(--line)',
+                background: serviceId === svc.id ? 'var(--primary-tint)' : 'var(--card)',
+                color: serviceId === svc.id ? 'var(--primary-deep)' : 'var(--ink)',
+              }"
+              @click="serviceId = svc.id"
+            >
+              <span style="font-weight: 600; font-size: 14.5px">{{ svc.title }}</span>
+              <span style="font-size: 13px; opacity: 0.75">{{ svc.priceDisplay }}</span>
+            </button>
+          </div>
+        </template>
+        <div
+          v-else-if="meetingService"
+          class="flex items-center justify-between"
+          style="padding: 12px 16px; background: var(--primary-tint); border-radius: 12px; margin-bottom: 26px; color: var(--primary-deep)"
+        >
+          <span style="font-weight: 600; font-size: 14.5px">{{ meetingService.title }}</span>
+          <span style="font-size: 13.5px; opacity: 0.85">{{ meetingService.priceDisplay }}</span>
         </div>
         <div class="kicker cool" style="margin-bottom: 14px">Өдөр сонгох</div>
         <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">

@@ -31,10 +31,10 @@ const DISCOUNT_RATE = 0.3
 
 const STEP_LABELS = {
   plan: 'Үйлчилгээ',
-  account: 'Бүртгэл',
-  booking: 'Цаг захиалах',
+  account: 'Нэвтрэх',
+  booking: 'Цаг сонгох',
   payment: 'Төлбөр',
-  review: 'Батлагдсан',
+  review: 'Илгээсэн',
 }
 
 // ── Available slots fetching ──────────────────────────────────────────────────
@@ -107,7 +107,10 @@ function subscribeRealtime() {
     .subscribe()
 }
 
-onUnmounted(() => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) })
+onUnmounted(() => {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
+  clearTimeout(copiedTimer)
+})
 
 const stepSequence = computed(() => {
   // Slot first, login gate second: user commits to a time before Google login,
@@ -362,7 +365,7 @@ async function submitPayment() {
       currency: 'MNT',
       status: 'pending',
       service_type: selectedService.value.id,
-      bank_reference: 'TU-' + (form.value.name.split(' ')[0]?.toUpperCase() || 'GUEST'),
+      bank_reference: bankReference.value,
     })
     .select('id')
     .single()
@@ -408,13 +411,40 @@ async function handleContinue() {
 
 // ── Display helpers ───────────────────────────────────────────────────────────
 
+const bankReference = computed(
+  () => 'TU-' + (form.value.name.split(' ')[0]?.toUpperCase() || 'GUEST'),
+)
+
 const transferRows = computed(() => [
-  ['Банк', 'Голомт банк'],
-  ['Дансны нэр', 'Гэрэлцэцэг Алтанцог'],
-  ['Дансны дугаар', '2705130475'],
-  ['IBAN', '37001500'],
-  ['Гүйлгээний утга', 'TU-' + (form.value.name.split(' ')[0]?.toUpperCase() || 'GUEST')],
+  { label: 'Банк', value: 'Голомт банк' },
+  { label: 'Дансны нэр', value: 'Гэрэлцэцэг Алтанцог' },
+  { label: 'Дансны дугаар', value: '2705130475', copy: true },
+  { label: 'IBAN', value: '37001500', copy: true },
+  { label: 'Гүйлгээний утга', value: bankReference.value, copy: true },
 ])
+
+// Click-to-copy so the user never re-types the account number or reference
+const copiedKey = ref('')
+let copiedTimer = null
+async function copyValue(key, value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    copiedKey.value = key
+    clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => (copiedKey.value = ''), 1600)
+  } catch {
+    /* clipboard unavailable — value stays visible for manual copy */
+  }
+}
+
+// One clear reason why the submit button is disabled — instead of a dead button
+const paymentHint = computed(() => {
+  if (stepType.value !== 'payment' || submitting.value) return ''
+  if (!form.value.name) return 'Нэрээ оруулна уу'
+  if (!form.value.phone) return 'Утасны дугаараа оруулна уу'
+  if (!uploaded.value) return 'Баримтын зургаа хавсаргана уу'
+  return ''
+})
 
 const reviewRows = computed(() => {
   const rows = [
@@ -435,7 +465,7 @@ function fmtMNT(v) {
   return v.toLocaleString('mn-MN') + ' ₮'
 }
 
-const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
+const serviceIcons = { subscription: 'book', tarot: 'star' }
 </script>
 
 <template>
@@ -461,19 +491,21 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
       <div v-if="stepType === 'plan'" class="rise enroll-step-content">
         <h2 class="enroll-step-title">Үйлчилгээгээ сонгоно уу</h2>
         <div class="enroll-subscriber-row flex items-center">
-          <p class="muted" style="font-size: 15px; margin: 0">
-            Subscription авсан хэрэглэгчид автоматаар
+          <template v-if="isSubscriber">
+            <span
+              class="chip"
+              style="background: var(--sage-tint); color: var(--sage-deep); font-size: 12px"
+            >
+              30% хөнгөлөлт идэвхтэй
+            </span>
+            <p class="muted" style="font-size: 14px; margin: 0">
+              Уулзалтын үйлчилгээний үнэ танд автоматаар хямдарч тооцогдоно.
+            </p>
+          </template>
+          <p v-else class="muted" style="font-size: 14px; margin: 0">
+            Сарын гишүүнчлэлтэй хэрэглэгчид уулзалтын үйлчилгээг
+            <strong style="color: var(--sage-deep)">30% хөнгөлөлттэй</strong> авдаг.
           </p>
-          <span
-            v-if="isSubscriber"
-            class="chip"
-            style="background: var(--sage-tint); color: var(--sage-deep); font-size: 12px"
-          >
-            30% хөнгөлөлт идэвхтэй
-          </span>
-          <span v-else class="muted" style="font-size: 14px; font-weight: 600; color: var(--sage-deep)">
-            30% хөнгөлөлт авна
-          </span>
         </div>
 
         <!-- service cards -->
@@ -562,6 +594,12 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
                   <span v-else>{{ s.priceDisplay }}</span>
                 </div>
                 <div class="muted" style="font-size: 12px">{{ s.period }}</div>
+                <div
+                  v-if="!isSubscriber && s.id !== 'subscription'"
+                  style="font-size: 11.5px; color: var(--sage-deep); margin-top: 2px"
+                >
+                  Гишүүнд {{ fmtMNT(Math.round(s.price * 0.7)) }}
+                </div>
               </div>
 
               <!-- selected check -->
@@ -787,10 +825,21 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
             <UiIcon name="calendar" :size="16" style="flex: none" />
             <span style="font-weight: 600">{{ selectedService.title }} · {{ bookDate.d }} {{ bookDate.n }} · {{ bookSlot.time }}</span>
           </div>
-          <h2 class="enroll-step-title">Банкны шилжүүлэг</h2>
-          <p class="enroll-step-lead muted">
-            Дор дурдсан дансруу шилжүүлэг хийж, баримтын зурагийг хавсаргана уу.
-          </p>
+          <h2 class="enroll-step-title">Төлбөр төлөх</h2>
+          <div class="enroll-pay-steps">
+            <div class="enroll-pay-step">
+              <span class="enroll-pay-step__num">1</span>
+              Доорх данс руу <strong>{{ fmtMNT(finalPrice) }}</strong> шилжүүлнэ
+            </div>
+            <div class="enroll-pay-step">
+              <span class="enroll-pay-step__num">2</span>
+              Гүйлгээний утга дээр <strong>{{ bankReference }}</strong> гэж бичнэ
+            </div>
+            <div class="enroll-pay-step">
+              <span class="enroll-pay-step__num">3</span>
+              Баримтын зургаа хавсаргаад илгээнэ
+            </div>
+          </div>
 
           <!-- discount banner -->
           <div
@@ -812,13 +861,26 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
               <span style="font-weight: 600">Шилжүүлгийн мэдээлэл</span>
             </div>
             <div
-              v-for="[k, v] in transferRows"
-              :key="k"
+              v-for="row in transferRows"
+              :key="row.label"
               class="flex items-center justify-between"
               style="padding: 11px 0; border-bottom: 1px solid var(--line-soft)"
             >
-              <span class="muted" style="font-size: 13.5px">{{ k }}</span>
-              <span style="font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums">{{ v }}</span>
+              <span class="muted" style="font-size: 13.5px">{{ row.label }}</span>
+              <span class="flex items-center" style="gap: 8px">
+                <span style="font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums">{{ row.value }}</span>
+                <button
+                  v-if="row.copy"
+                  type="button"
+                  class="copy-btn"
+                  :class="{ 'copy-btn--done': copiedKey === row.label }"
+                  :aria-label="'Хуулах: ' + row.label"
+                  @click="copyValue(row.label, row.value)"
+                >
+                  <UiIcon :name="copiedKey === row.label ? 'check' : 'copy'" :size="14" />
+                  {{ copiedKey === row.label ? 'Хуулсан' : 'Хуулах' }}
+                </button>
+              </span>
             </div>
             <div class="flex items-center justify-between" style="padding: 16px 0 4px">
               <span style="font-weight: 600">Нийт дүн</span>
@@ -830,8 +892,20 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
                 >
                   {{ fmtMNT(basePrice) }}
                 </div>
-                <span style="font-family: var(--serif); font-weight: 700; font-size: 26px; color: var(--clay-deep)">
-                  {{ fmtMNT(finalPrice) }}
+                <span class="flex items-center" style="gap: 8px; justify-content: flex-end">
+                  <span style="font-family: var(--serif); font-weight: 700; font-size: 26px; color: var(--clay-deep)">
+                    {{ fmtMNT(finalPrice) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="copy-btn"
+                    :class="{ 'copy-btn--done': copiedKey === 'amount' }"
+                    aria-label="Дүн хуулах"
+                    @click="copyValue('amount', String(finalPrice))"
+                  >
+                    <UiIcon :name="copiedKey === 'amount' ? 'check' : 'copy'" :size="14" />
+                    {{ copiedKey === 'amount' ? 'Хуулсан' : 'Хуулах' }}
+                  </button>
                 </span>
               </div>
             </div>
@@ -962,7 +1036,13 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
           <UiIcon name="arrowLeft" :size="17" /> Буцах
         </button>
         <div class="flex items-center" style="gap: 16px">
-          <span v-if="stepType === 'payment'" class="muted" style="font-size: 13.5px; align-self: center">
+          <span
+            v-if="stepType === 'payment' && paymentHint"
+            style="font-size: 13.5px; align-self: center; color: var(--clay-deep); font-weight: 600"
+          >
+            {{ paymentHint }}
+          </span>
+          <span v-else-if="stepType === 'payment'" class="muted" style="font-size: 13.5px; align-self: center">
             {{ fmtMNT(finalPrice) }} · {{ selectedService.title }}
           </span>
           <button
@@ -971,7 +1051,7 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
             @click="handleContinue"
           >
             <UiIcon v-if="submitting" name="clock" :size="17" style="animation: spin 1s linear infinite" />
-            {{ stepType === 'payment' ? 'Бүртгэл илгээх' : 'Үргэлжлүүлэх' }}
+            {{ stepType === 'payment' ? (submitting ? 'Илгээж байна…' : 'Баримт илгээх') : 'Үргэлжлүүлэх' }}
             <UiIcon v-if="!submitting" name="arrowRight" :size="18" />
           </button>
         </div>
@@ -1153,6 +1233,61 @@ const serviceIcons = { subscription: 'book', tarot: 'star', coaching: 'heart' }
   .enroll-step-lead {
     margin-bottom: 18px;
   }
+}
+
+.enroll-pay-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0 0 20px;
+}
+
+.enroll-pay-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.enroll-pay-step__num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-tint);
+  color: var(--primary-deep);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.copy-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary-deep);
+}
+.copy-btn--done {
+  border-color: var(--good);
+  background: var(--good-tint);
+  color: var(--good);
 }
 
 .enroll-service-card {

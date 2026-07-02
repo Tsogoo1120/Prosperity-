@@ -78,21 +78,6 @@ export const services = [
       },
     ],
   },
-  {
-    id: 'coaching',
-    title: 'coaching үйлчилгээ',
-    subtitle: '1 цаг · Онлайн · Цаг захиалах шаардлагатай',
-    priceDisplay: '150,000 ₮',
-    price: 150000,
-    period: '',
-    hue: 'var(--sage-deep)',
-    requiresBooking: true,
-    features: [
-      'Хүсвэл тарот хөзрөөс 3 асуулт асууж болно',
-      'Амьдралд тань болж буй үйл явдлуудын талаар дэлгэрэнгүй ярилцаж, хамтдаа гаргалгаа олно',
-      'Spirituality талаас нь дийлэнх тохиолдолд ярилцана',
-    ],
-  },
 ]
 
 const courses = [

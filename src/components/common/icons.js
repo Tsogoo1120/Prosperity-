@@ -50,6 +50,7 @@ export const ICONS = {
   volume: 'M5 9v6h4l5 4V5L9 9zM17 9a3 3 0 0 1 0 6M19.5 7a6 6 0 0 1 0 10',
   message: 'M4 5h16v11H9l-4 4z',
   award: 'M12 14a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM9 13l-1.5 7L12 18l4.5 2L15 13',
+  copy: 'M9 9h11v11H9zM15 9V4H4v11h5',
   instagram:
     'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM17.5 6.5h.01',
 }
