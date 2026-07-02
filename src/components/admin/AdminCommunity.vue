@@ -140,7 +140,7 @@ async function toggleComment(comment) {
               </div>
               <div style="font-weight: 600; font-size: 15px; margin-bottom: 5px; line-height: 1.3">{{ post.title }}</div>
               <p style="font-size: 13.5px; color: var(--ink-soft); line-height: 1.55">
-                {{ post.body.length > 220 ? post.body.slice(0, 220) + '…' : post.body }}
+                {{ (post.body || '').length > 220 ? post.body.slice(0, 220) + '…' : (post.body || '') }}
               </p>
             </div>
             <div class="flex flex-col items-end" style="gap: 6px; flex-shrink: 0">

@@ -2,6 +2,7 @@
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
+import { slugify } from '@/utils/slug.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import {
   uploadThumbnailToStorage,
@@ -204,7 +205,7 @@ function cancel() {
 
 watch(() => form.value.title, (t) => {
   if (!editId.value) {
-    form.value.slug = t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60)
+    form.value.slug = slugify(t)
   }
 })
 

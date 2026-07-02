@@ -78,7 +78,7 @@ async function saveItem(item) {
   saving.value = item.id
   await supabase
     .from('announcements')
-    .update({ tone: item.tone, title: item.title?.trim() || null, body: item.body, pinned: item.pinned })
+    .update({ tone: item.tone, title: item.title?.trim() || null, body: item.body, pinned: item.pinned, updated_at: new Date().toISOString() })
     .eq('id', item.id)
   saving.value = null
 }
@@ -236,7 +236,7 @@ async function remove(item) {
                 >Hidden</span>
               </div>
               <p style="font-size: 13.5px; color: var(--ink-soft); line-height: 1.55; white-space: pre-wrap">{{ item.body }}</p>
-              <div class="muted" style="font-size: 12px; margin-top: 6px">{{ timeAgo(item.updated_at) }}</div>
+              <div class="muted" style="font-size: 12px; margin-top: 6px">{{ timeAgo(item.updated_at || item.created_at) }}</div>
             </div>
             <div class="flex flex-col items-end" style="gap: 6px; flex-shrink: 0">
               <button class="btn btn-ghost btn-sm" :style="item.pinned ? { color: 'var(--gold)' } : {}" @click="togglePin(item)">

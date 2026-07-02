@@ -886,6 +886,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     position: sticky;
     top: 0;
     z-index: 50;
@@ -1081,19 +1082,6 @@
     font-size: 16px !important;
   }
 
-  .admin-videos-form-grid {
-    grid-template-columns: 1fr 1fr !important;
-  }
-  .admin-videos-header {
-    display: grid;
-  }
-  .admin-videos-entry {
-    display: grid;
-  }
-  .admin-videos-entry > * {
-    width: auto;
-  }
-
   .landing-mobile-bar {
     display: flex;
     position: fixed;
@@ -1262,5 +1250,35 @@
   }
   .sched-history-times > div {
     justify-content: flex-start !important;
+  }
+
+  /* Admin tests: JSON editors stack; list-row actions wrap to their own line */
+  .admin-tests-json-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .admin-test-row {
+    flex-wrap: wrap;
+  }
+  .admin-test-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* Payments: decision buttons become full-width tap targets */
+  .admin-pay-actions {
+    width: 100%;
+    flex-direction: column-reverse;
+    align-items: stretch !important;
+  }
+  .admin-pay-actions .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
+  }
+
+  /* Schedule: week navigation spans the row, arrows at the edges */
+  .admin-sched-weeknav {
+    width: 100%;
+    justify-content: space-between;
   }
 }

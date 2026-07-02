@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
 import UiIcon from '@/components/common/UiIcon.vue'
@@ -81,10 +81,17 @@ onMounted(() => {
 })
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 
+const detailEl = ref(null)
+
 function selectPayment(p) {
   if (!p) return
   sel.value = p
   actError.value = ''
+  // Stacked mobile layout: the detail panel sits below the full queue list,
+  // so bring it into view after a tap.
+  if (window.innerWidth < 1024) {
+    nextTick(() => detailEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 }
 
 // After acting on a payment, jump to the next one still awaiting review so the
@@ -276,7 +283,7 @@ async function denyPayment() {
     </div>
 
     <!-- detail panel -->
-    <div v-if="sel" class="scroll-y" style="overflow-y: auto">
+    <div v-if="sel" ref="detailEl" class="scroll-y" style="overflow-y: auto">
       <div class="page-inset" style="max-width: 720px">
         <div class="flex items-center justify-between" style="margin-bottom: 22px">
           <div class="flex items-center" style="gap: 16px">
@@ -350,7 +357,7 @@ async function denyPayment() {
                 · <kbd>A</kbd> батлах · <kbd>D</kbd> татгалзах · <kbd>↑↓</kbd> шилжих
               </span>
             </div>
-            <div class="flex items-center" style="gap: 10px">
+            <div class="flex items-center admin-pay-actions" style="gap: 10px">
               <button
                 class="btn btn-ghost"
                 style="color: var(--bad); border-color: var(--bad-tint)"

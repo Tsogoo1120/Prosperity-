@@ -176,7 +176,7 @@ function isExpired(member) {
     <div class="page-inset" style="max-width: 880px">
 
       <!-- Section tabs -->
-      <div class="flex items-center" style="gap: 4px; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 22px; width: fit-content">
+      <div class="flex flex-wrap items-center" style="gap: 4px; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 22px; width: fit-content; max-width: 100%">
         <button
           v-for="[id, lbl] in [['members', 'Гишүүд'], ['meetings', 'Уулзалтын захиалга']]"
           :key="id"
@@ -201,7 +201,7 @@ function isExpired(member) {
       <!-- ═══════════════════ MEMBERS ═══════════════════ -->
       <template v-if="tab === 'members'">
         <!-- Filter tabs -->
-        <div class="flex items-center" style="gap: 4px; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 18px; width: fit-content">
+        <div class="flex flex-wrap items-center" style="gap: 4px; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 18px; width: fit-content; max-width: 100%">
           <button
             v-for="[id, lbl] in [['active', 'Идэвхтэй'], ['pending', 'Хүлээгдэж байна'], ['expired', 'Дууссан'], ['all', 'Бүгд']]"
             :key="id"

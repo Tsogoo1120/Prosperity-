@@ -10,8 +10,23 @@ const props = defineProps({
 const emit = defineEmits(['slot-added'])
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
 const HH = 58
+
+// Hour rows expand to fit whatever slots exist so early-morning or evening
+// slots never render outside the grid.
+const HOURS = computed(() => {
+  let first = 8
+  let last = 17
+  for (const s of props.slots) {
+    const start = new Date(s.start_at)
+    const end = new Date(s.end_at)
+    const sh = start.getHours()
+    const eh = Math.min(Math.ceil((end.getHours() * 60 + end.getMinutes()) / 60) - 1, 23)
+    if (sh < first) first = sh
+    last = Math.max(last, sh, eh)
+  }
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i)
+})
 
 // Slots have no end time in the UI — the coach knows when a session ends.
 // A fixed end_at is still stored so the Google Meet event has a duration and
@@ -243,7 +258,7 @@ async function deleteSlot() {
             position: 'absolute',
             left: '5px',
             right: '5px',
-            top: (slotStartH(s) - 8) * HH + 2 + 'px',
+            top: (slotStartH(s) - HOURS[0]) * HH + 2 + 'px',
             height: Math.max((slotDurMin(s) / 60) * HH - 4, 22) + 'px',
             background: s.status === 'pending' ? 'var(--warn-tint)' : s.status === 'booked' ? 'var(--primary)' : 'var(--surface-3)',
             color: s.status === 'pending' ? 'var(--warn)' : s.status === 'booked' ? '#fff' : 'var(--ink-soft)',

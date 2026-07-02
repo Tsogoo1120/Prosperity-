@@ -207,7 +207,7 @@ onUnmounted(() => {
       </div>
 
       <template v-if="tab === 'calendar'">
-        <div class="flex items-center" style="gap: 12px">
+        <div class="flex items-center admin-sched-weeknav" style="gap: 12px">
           <button class="btn btn-ghost btn-sm" style="padding: 9px" @click="prevWeek"><UiIcon name="chevLeft" :size="17" /></button>
           <div style="font-weight: 600; font-size: 15.5px">{{ weekLabel }}</div>
           <button class="btn btn-ghost btn-sm" style="padding: 9px" @click="nextWeek"><UiIcon name="chevRight" :size="17" /></button>

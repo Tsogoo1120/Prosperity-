@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase.js'
+import { slugify } from '@/utils/slug.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 
 const list = ref([])
@@ -54,7 +55,7 @@ function openQuestions(t) {
 
 watch(() => form.value.title, (t) => {
   if (!editId.value) {
-    form.value.slug = t.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60)
+    form.value.slug = slugify(t)
   }
 })
 
@@ -192,7 +193,7 @@ onMounted(load)
         <div
           v-for="t in list"
           :key="t.id"
-          class="card"
+          class="card admin-test-row"
           style="border-radius: 14px; padding: 18px 22px; display: flex; align-items: center; gap: 16px"
         >
           <div
@@ -216,7 +217,7 @@ onMounted(load)
           >
             {{ t.is_published ? 'Нийтэлсэн' : 'Хаалттай' }}
           </button>
-          <div class="flex items-center" style="gap: 6px; flex-shrink: 0">
+          <div class="flex items-center admin-test-actions" style="gap: 6px; flex-shrink: 0">
             <button class="btn btn-soft btn-sm" style="padding: 8px 12px; font-size: 12.5px" @click="openQuestions(t)">
               <UiIcon name="layers" :size="14" /> Асуултууд
             </button>
@@ -304,7 +305,7 @@ onMounted(load)
       <h2 style="font-size: 22px; margin-bottom: 6px">{{ activeTest?.title }}</h2>
       <p class="muted" style="font-size: 14px; margin-bottom: 24px">Асуулт болон оноолтын тохиргоо</p>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start">
+      <div class="admin-tests-json-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start">
         <!-- questions JSON -->
         <div class="card card-pad" style="border-radius: 16px">
           <div class="flex items-center justify-between" style="margin-bottom: 14px">

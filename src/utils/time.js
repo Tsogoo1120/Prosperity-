@@ -1,4 +1,5 @@
 export function timeAgo(dateStr) {
+  if (!dateStr) return ''
   const diff = Date.now() - new Date(dateStr).getTime()
   const m = Math.floor(diff / 60000)
   if (m < 1) return 'Just now'
