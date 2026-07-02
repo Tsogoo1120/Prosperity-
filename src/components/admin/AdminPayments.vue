@@ -13,6 +13,7 @@ const screenshotUrl = ref('')
 const loadingList = ref(true)
 const acting = ref(false)
 const actError = ref('')
+const actOk = ref('')
 
 const DURATION_DAYS = 30
 
@@ -75,11 +76,22 @@ function onKey(e) {
   }
 }
 
+let realtimeChannel = null
+
 onMounted(() => {
   loadPayments()
   window.addEventListener('keydown', onKey)
+  // New bookings/enrollments insert payment rows from other sessions — keep the
+  // queue live so the admin never acts on a stale list.
+  realtimeChannel = supabase
+    .channel('admin-payments')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, loadPayments)
+    .subscribe()
 })
-onUnmounted(() => window.removeEventListener('keydown', onKey))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKey)
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
+})
 
 const detailEl = ref(null)
 
@@ -87,6 +99,7 @@ function selectPayment(p) {
   if (!p) return
   sel.value = p
   actError.value = ''
+  actOk.value = ''
   // Stacked mobile layout: the detail panel sits below the full queue list,
   // so bring it into view after a tap.
   if (window.innerWidth < 1024) {
@@ -101,7 +114,14 @@ function advanceToNextPending(prevId) {
   const next =
     (idx >= 0 && list.value.slice(idx + 1).find((p) => p.status === 'pending')) ||
     list.value.find((p) => p.status === 'pending')
-  if (next) selectPayment(next)
+  if (!next) return
+  // selectPayment clears the action banners — keep the outcome of the decision
+  // we just made visible while the next item loads.
+  const ok = actOk.value
+  const err = actError.value
+  selectPayment(next)
+  actOk.value = ok
+  actError.value = err
 }
 
 function fmtDate(iso) {
@@ -138,13 +158,44 @@ async function setPaymentStatus(id, status) {
     .eq('id', id)
 }
 
+// Meeting bookings create both a payment row and a coaching_slot with the same
+// uploaded receipt path — that shared path is the join key between the two.
+async function findLinkedSlot(payment) {
+  if (!payment.screenshot_path || payment.service_type === 'subscription') return null
+  const { data } = await supabase
+    .from('coaching_slots')
+    .select('id, status, meet_link')
+    .eq('payment_screenshot_path', payment.screenshot_path)
+    .eq('user_id', payment.user_id)
+    .maybeSingle()
+  return data ?? null
+}
+
 async function approvePayment() {
   if (!sel.value || !session.value) return
   acting.value = true
   actError.value = ''
+  actOk.value = ''
 
   const payment = sel.value
   const userId = payment.user_id
+
+  // Meeting payment: approving it must also confirm the booked slot — mint the
+  // Google Meet link first, and only mark the payment approved once that works,
+  // so the queue never shows "approved" for a meeting that has no link.
+  const linkedSlot = await findLinkedSlot(payment)
+  if (linkedSlot?.status === 'pending') {
+    const { data, error } = await supabase.functions
+      .invoke('coaching-create-meet', { body: { slotId: linkedSlot.id } })
+    if (error || !data?.ok) {
+      actError.value =
+        'Google Meet линк үүсгэхэд алдаа гарлаа: ' +
+        (data?.detail || error?.message || 'тодорхойгүй') +
+        ' — төлбөр батлагдаагүй хэвээр байна.'
+      acting.value = false
+      return
+    }
+  }
 
   const { error: payErr } = await setPaymentStatus(payment.id, 'approved')
 
@@ -179,10 +230,31 @@ async function approvePayment() {
     }
   }
 
-  // Fire-and-forget — email failure must not block admin workflow
-  supabase.functions
-    .invoke('send-email', { body: { type: 'payment_approved', userId } })
-    .catch(() => {})
+  if (linkedSlot && linkedSlot.status !== 'cancelled') {
+    // The approval email for a meeting carries the Meet link + calendar button.
+    // Await it so we can tell the admin whether the user was actually notified.
+    try {
+      const { data, error } = await supabase.functions
+        .invoke('send-email', { body: { type: 'coaching_approved', slotId: linkedSlot.id, adminNote: null } })
+      if (error || data?.emailSent === false) {
+        actError.value = 'Захиалга батлагдсан, гэвч имэйл илгээгдсэнгүй. Хэрэглэгчид өөрөөр мэдэгдэнэ үү.'
+      } else {
+        actOk.value = 'Захиалга батлагдлаа — Google Meet линк үүсч, хэрэглэгчид имэйлээр илгээгдлээ.'
+      }
+    } catch {
+      actError.value = 'Захиалга батлагдсан, гэвч имэйл илгээгдсэнгүй. Хэрэглэгчид өөрөөр мэдэгдэнэ үү.'
+    }
+  } else if (!linkedSlot && payment.service_type === 'subscription') {
+    // Fire-and-forget — email failure must not block admin workflow.
+    // (The payment_approved template talks about subscription access, so it's
+    // only right for subscription payments.)
+    supabase.functions
+      .invoke('send-email', { body: { type: 'payment_approved', userId } })
+      .catch(() => {})
+    actOk.value = 'Төлбөр батлагдлаа.'
+  } else {
+    actOk.value = 'Төлбөр батлагдлаа.'
+  }
 
   acting.value = false
   await loadPayments()
@@ -193,6 +265,7 @@ async function denyPayment() {
   if (!sel.value || !session.value) return
   acting.value = true
   actError.value = ''
+  actOk.value = ''
 
   const payment = sel.value
 
@@ -217,10 +290,23 @@ async function denyPayment() {
     }
   }
 
-  // Fire-and-forget — email failure must not block admin workflow
-  supabase.functions
-    .invoke('send-email', { body: { type: 'payment_denied', userId: payment.user_id, adminNote: null } })
-    .catch(() => {})
+  // Denying a meeting payment also cancels the linked booking request so it
+  // doesn't linger in the Schedule queue.
+  const linkedSlot = await findLinkedSlot(payment)
+  if (linkedSlot?.status === 'pending') {
+    await supabase
+      .from('coaching_slots')
+      .update({ status: 'cancelled', decided_at: new Date().toISOString() })
+      .eq('id', linkedSlot.id)
+    supabase.functions
+      .invoke('send-email', { body: { type: 'coaching_denied', slotId: linkedSlot.id, adminNote: null } })
+      .catch(() => {})
+  } else {
+    // Fire-and-forget — email failure must not block admin workflow
+    supabase.functions
+      .invoke('send-email', { body: { type: 'payment_denied', userId: payment.user_id, adminNote: null } })
+      .catch(() => {})
+  }
 
   acting.value = false
   await loadPayments()
@@ -333,6 +419,16 @@ async function denyPayment() {
           </div>
         </div>
 
+        <!-- Success -->
+        <div
+          v-if="actOk"
+          class="flex items-start"
+          style="gap: 8px; margin-bottom: 16px; padding: 12px 14px; background: var(--good-tint); border-radius: 10px; font-size: 13px; color: var(--good)"
+        >
+          <UiIcon name="checkCircle" :size="15" style="flex: none; margin-top: 1px" />
+          {{ actOk }}
+        </div>
+
         <!-- Error -->
         <div
           v-if="actError"
@@ -352,7 +448,11 @@ async function denyPayment() {
           <div class="flex flex-wrap items-center justify-between" style="gap: 14px">
             <div class="flex items-center" style="gap: 8px; font-size: 13.5px; color: var(--ink-soft)">
               <UiIcon name="shield" :size="18" style="color: var(--sage-deep)" />
-              Дүн болон лавлагааг шалгасны дараа батална уу.
+              {{
+                sel.service_type === 'subscription'
+                  ? 'Дүн болон лавлагааг шалгасны дараа батална уу.'
+                  : 'Батлахад Google Meet линк үүсч, хэрэглэгчид имэйлээр илгээгдэнэ.'
+              }}
               <span class="hide-mobile muted" style="font-size: 12px; margin-left: 2px">
                 · <kbd>A</kbd> батлах · <kbd>D</kbd> татгалзах · <kbd>↑↓</kbd> шилжих
               </span>
@@ -396,8 +496,12 @@ async function denyPayment() {
           <span :style="{ fontWeight: 600, color: sel.status === 'approved' ? 'var(--good)' : 'var(--bad)' }">
             {{
               sel.status === 'approved'
-                ? 'Элсэлт батлагдсан — оюутанд мэдэгдэж, нэвтрэх эрх олгогдсон.'
-                : 'Элсэлт татгалзагдсан — оюутанд дахин илгээхийг хүссэн.'
+                ? (sel.service_type === 'subscription'
+                    ? 'Элсэлт батлагдсан — оюутанд мэдэгдэж, нэвтрэх эрх олгогдсон.'
+                    : 'Захиалга батлагдсан — Google Meet линк имэйлээр илгээгдсэн.')
+                : (sel.service_type === 'subscription'
+                    ? 'Элсэлт татгалзагдсан — оюутанд дахин илгээхийг хүссэн.'
+                    : 'Захиалга татгалзагдсан — хэрэглэгчид имэйлээр мэдэгдсэн.')
             }}
           </span>
         </div>

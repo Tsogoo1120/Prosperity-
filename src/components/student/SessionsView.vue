@@ -31,18 +31,20 @@ async function loadSessions() {
     .eq('user_id', session.value.user.id)
     .order('start_at', { ascending: true })
   if (!data) return
+  // Cancelled (denied) bookings are history, never "upcoming".
   upcoming.value = data
-    .filter((s) => s.start_at >= now)
+    .filter((s) => s.start_at >= now && (s.status === 'pending' || s.status === 'booked'))
     .map((s) => ({
       id: s.id,
       date: fmtDate(s.start_at),
       time: fmtTime(s.start_at),
       topic: serviceLabel(),
-      name: 'Dr. Maren',
+      name: 'Tsogoo',
+      status: s.status,
       meetLink: s.meet_link ?? null,
     }))
   past.value = data
-    .filter((s) => s.start_at < now)
+    .filter((s) => s.start_at < now && s.status === 'booked')
     .map((s) => ({
       id: s.id,
       date: fmtDate(s.start_at),
@@ -91,12 +93,12 @@ onUnmounted(() => {
         class="card rise flex flex-col sm:flex-row"
         style="border-radius: 18px; padding: 24px 28px; margin-bottom: 28px; gap: 20px; align-items: center; background: linear-gradient(120deg, var(--sage-tint), var(--card))"
       >
-        <UiAvatar name="Maren Halvorsen" color="var(--primary)" :size="62" />
+        <UiAvatar name="Tsogoo" color="var(--primary)" :size="62" />
         <div style="flex: 1; text-align: center">
           <h3 style="font-size: 20px">Tsogoo</h3>
           <p class="muted" style="font-size: 14px; margin-top: 3px">Онлайн уулзалт цаг товлох.</p>
         </div>
-        <button class="btn btn-primary btn-block sm:btn-block" style="width: 100%; max-width: 100%" @click="emit('book')"><UiIcon name="calendar" :size="17" /> Book a session</button>
+        <button class="btn btn-primary btn-block sm:btn-block" style="width: 100%; max-width: 100%" @click="emit('book')"><UiIcon name="calendar" :size="17" /> Цаг захиалах</button>
       </div>
 
       <!-- Available slots from admin -->
@@ -108,7 +110,7 @@ onUnmounted(() => {
             :key="s.id"
             class="card"
             style="text-align: left; padding: 14px 16px; border-radius: 12px; cursor: pointer; border-left: 4px solid var(--sage); background: var(--card); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line)"
-            @click="emit('book')"
+            @click="emit('book', s.id)"
           >
             <div style="font-weight: 600; font-size: 14px; color: var(--sage-deep); margin-bottom: 4px">
               {{ serviceLabel() }}
@@ -121,7 +123,7 @@ onUnmounted(() => {
         <div v-else class="muted" style="font-size: 14px; padding: 8px 0">Одоогоор нээлттэй цаг байхгүй байна.</div>
       </div>
 
-      <h3 style="font-size: 17px; margin-bottom: 14px">Upcoming</h3>
+      <h3 style="font-size: 17px; margin-bottom: 14px">Товлосон уулзалт</h3>
       <div class="flex flex-col" style="gap: 12px; margin-bottom: 34px">
         <div
           v-for="(s, i) in upcoming"
@@ -137,25 +139,28 @@ onUnmounted(() => {
           <div style="width: 1px; height: 40px; background: var(--line)" />
           <div style="flex: 1; min-width: 0">
             <div style="font-weight: 600; font-size: 15.5px">{{ s.topic }}</div>
-            <div class="muted" style="font-size: 13.5px">{{ s.name }} · Video call</div>
+            <div class="muted" style="font-size: 13.5px">{{ s.name }} · Видео дуудлага</div>
           </div>
           </div>
           <div class="flex items-center flex-wrap" style="gap: 8px; width: 100%; sm:width: auto">
-            <button class="btn btn-ghost btn-sm" @click="emit('book')">Reschedule</button>
+            <span
+              :class="'chip ' + (s.status === 'booked' ? 'good' : 'warn')"
+              style="font-size: 12px"
+            >{{ s.status === 'booked' ? 'Батлагдсан' : 'Хүлээгдэж байна' }}</span>
             <a
               v-if="s.meetLink"
               :href="s.meetLink"
               target="_blank"
               rel="noopener noreferrer"
               class="btn btn-blue btn-sm"
-            ><UiIcon name="video" :size="16" /> Join</a>
-            <span v-else class="muted" style="font-size: 13px">Уулзалтын линк удахгүй ирнэ</span>
+            ><UiIcon name="video" :size="16" /> Нэгдэх</a>
+            <span v-else-if="s.status === 'pending'" class="muted" style="font-size: 13px">Батлагдмагц Meet линк имэйлээр ирнэ</span>
           </div>
         </div>
-        <div v-if="!upcoming.length" class="muted" style="font-size: 14px; padding: 8px 0">No upcoming sessions. Book one above.</div>
+        <div v-if="!upcoming.length" class="muted" style="font-size: 14px; padding: 8px 0">Товлосон уулзалт алга. Дээрх цагуудаас захиалаарай.</div>
       </div>
 
-      <h3 style="font-size: 17px; margin-bottom: 14px">Past sessions</h3>
+      <h3 style="font-size: 17px; margin-bottom: 14px">Өнгөрсөн уулзалт</h3>
       <div class="flex flex-col" style="gap: 12px">
         <div
           v-for="(s, i) in past"
@@ -176,9 +181,8 @@ onUnmounted(() => {
             </div>
           </div>
           </div>
-          <button class="btn btn-quiet btn-sm" style="align-self: flex-start">View notes</button>
         </div>
-        <div v-if="!past.length" class="muted" style="font-size: 14px; padding: 8px 0">No past sessions yet.</div>
+        <div v-if="!past.length" class="muted" style="font-size: 14px; padding: 8px 0">Өнгөрсөн уулзалт байхгүй байна.</div>
       </div>
     </div>
   </div>

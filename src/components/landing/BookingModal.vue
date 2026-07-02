@@ -10,6 +10,9 @@ import { services } from '@/data/union.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  // When set, pre-selects this slot's day + time after slots load (user tapped
+  // a concrete available time elsewhere in the app).
+  preselectSlotId: { type: String, default: null },
 })
 const emit = defineEmits(['close'])
 
@@ -56,7 +59,7 @@ const currentItems = computed(() => {
 
 watch(
   () => props.open,
-  (v) => {
+  async (v) => {
     if (v) {
       step.value = 0
       serviceId.value = BOOKABLE[0]?.id ?? 'tarot'
@@ -69,7 +72,18 @@ watch(
       guestPhone.value = profile.value?.phone ?? ''
       receiptFile.value = null
       bookDate.value = availDays.value[0] ?? null
-      loadAvailableSlots()
+      await loadAvailableSlots()
+      if (props.preselectSlotId) {
+        // Jump straight to the day + time the user tapped.
+        for (const day of Object.values(dayMap.value)) {
+          const item = day.items.find((it) => it.id === props.preselectSlotId)
+          if (item) {
+            bookDate.value = day
+            bookSlot.value = item
+            break
+          }
+        }
+      }
     }
   },
 )
@@ -307,12 +321,12 @@ async function submitPayment() {
           <input v-model="guestEmail" type="email" class="input" placeholder="name@example.com" />
         </div>
         <div class="field" style="margin-top: 14px">
-          <label>Утас <span class="muted" style="font-weight: 400">(optional)</span></label>
+          <label>Утас <span class="muted" style="font-weight: 400">(заавал биш)</span></label>
           <input v-model="guestPhone" type="tel" class="input" placeholder="9911-2233" />
         </div>
         <div class="field" style="margin-top: 14px">
-          <label>What would you like to focus on? <span class="muted" style="font-weight: 400">(optional)</span></label>
-          <input v-model="topic" class="input" placeholder="e.g. career direction, managing stress…" />
+          <label>Юун дээр төвлөрөхийг хүсэж байна вэ? <span class="muted" style="font-weight: 400">(заавал биш)</span></label>
+          <input v-model="topic" class="input" placeholder="ж: карьерын чиглэл, стресс менежмент…" />
         </div>
         <p v-if="bookingErr" style="margin-top: 14px; font-size: 13px; color: var(--bad); text-align: center">
           {{ bookingErr }}

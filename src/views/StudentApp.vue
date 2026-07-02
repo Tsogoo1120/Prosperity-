@@ -27,6 +27,14 @@ watchEffect(() => {
 
 const view = ref('dashboard')
 const booking = ref(false)
+// Slot id to preselect inside the booking modal (set when the user taps a
+// specific available time in SessionsView).
+const bookingSlotId = ref(null)
+
+function openBooking(slotId) {
+  bookingSlotId.value = typeof slotId === 'string' ? slotId : null
+  booking.value = true
+}
 const targetLesson = ref(null) // deep-link lesson id for LearnView (from dashboard card)
 const { open: sidebarOpen, toggle: toggleSidebar, close: closeSidebar } = useSidebar()
 
@@ -99,8 +107,8 @@ async function handleLogout() {
       </template>
 
       <template v-else-if="view === 'sessions'">
-        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="booking = true" @menu="toggleSidebar" />
-        <SessionsView @book="booking = true" />
+        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="openBooking" @menu="toggleSidebar" />
+        <SessionsView @book="openBooking" />
       </template>
 
       <template v-else-if="view === 'community'">
@@ -109,10 +117,10 @@ async function handleLogout() {
       </template>
 
       <template v-else>
-        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="booking = true" @menu="toggleSidebar" />
-        <DashboardView @set-view="setView" @open-lesson="openLesson" @book="booking = true" />
+        <StudentTopbar :title="title" :sub="sub" show-book @open-lesson="openLesson" @book="openBooking" @menu="toggleSidebar" />
+        <DashboardView @set-view="setView" @open-lesson="openLesson" @book="openBooking" />
       </template>
     </div>
-    <BookingModal :open="booking" @close="booking = false" />
+    <BookingModal :open="booking" :preselect-slot-id="bookingSlotId" @close="booking = false" />
   </div>
 </template>

@@ -69,6 +69,28 @@ function formatMongolianDateTime(iso: string): string {
   return `${d.getFullYear()} оны ${d.getMonth() + 1} сарын ${d.getDate()}, ${hh}:${mm}`
 }
 
+// Google Calendar "add event" deep link — lets the user save the session to
+// their own calendar (we deliberately don't invite them via the Calendar API,
+// so this link is how the event reaches their calendar).
+function googleCalendarLink(opts: {
+  title: string
+  startAt: string
+  endAt: string
+  details: string
+  location?: string | null
+}): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: opts.title,
+    dates: `${fmt(opts.startAt)}/${fmt(opts.endAt)}`,
+    details: opts.details,
+  })
+  if (opts.location) params.set('location', opts.location)
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -326,6 +348,21 @@ export function coachingApprovedTemplate(opts: {
        </p>`
     : ''
   const meetText = opts.meetLink ? `Google Meet линк: ${opts.meetLink}\n` : ''
+  const calHref = googleCalendarLink({
+    title: 'Онлайн уулзалт — Union',
+    startAt: opts.slotStartAt,
+    endAt: opts.slotEndAt,
+    details: opts.meetLink
+      ? `Google Meet: ${opts.meetLink}`
+      : 'Union онлайн уулзалт',
+    location: opts.meetLink ?? null,
+  })
+  const calBlock = `<p style="margin:0 0 16px;">
+       <a href="${calHref}"
+          style="color:#5c564d;font-size:14px;text-decoration:underline;">
+         📅 Google Calendar-т нэмэх
+       </a>
+     </p>`
 
   return {
     subject: 'Таны цаг баталгаажлаа',
@@ -339,6 +376,7 @@ export function coachingApprovedTemplate(opts: {
           Та өөрийн бүртгэл эсвэл имэйлээр очсон Google Meet-ийн линкээр холбогдоорой.
         </p>
         ${meetBlock}
+        ${calBlock}
         <p style="margin:0 0 16px;color:#5c564d;">Удахгүй уулзая!</p>
         ${SUPPORT_HTML}
         ${SIGN_HTML}`,
@@ -346,7 +384,7 @@ export function coachingApprovedTemplate(opts: {
       ctaHref: opts.siteUrl,
     }),
     text:
-      `Сайн байна уу,\n\nТаны төлбөр амжилттай баталгаажлаа.\nУулзалтын цаг товлогдлоо: ${startHuman}\nТа өөрийн бүртгэл эсвэл имэйлээр очсон Google Meet-ийн линкээр холбогдоорой.\n${meetText}Удахгүй уулзая!\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
+      `Сайн байна уу,\n\nТаны төлбөр амжилттай баталгаажлаа.\nУулзалтын цаг товлогдлоо: ${startHuman}\nТа өөрийн бүртгэл эсвэл имэйлээр очсон Google Meet-ийн линкээр холбогдоорой.\n${meetText}Google Calendar-т нэмэх: ${calHref}\nУдахгүй уулзая!\n\n${SUPPORT_TEXT}\n\n${SIGN_TEXT}`,
   }
 }
 

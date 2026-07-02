@@ -2,12 +2,14 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
+import { useAuth } from '@/composables/useAuth.js'
 import ScheduleCalendar from './ScheduleCalendar.vue'
 import ScheduleRequests from './ScheduleRequests.vue'
 import ScheduleHistory from './ScheduleHistory.vue'
 
 const tab = ref('calendar')
 const calendarRef = ref(null)
+const { session } = useAuth()
 
 function getMondayOf(date) {
   const d = new Date(date)
@@ -64,7 +66,7 @@ async function loadPendingRequests() {
   loadingPending.value = true
   const { data } = await supabase
     .from('coaching_slots')
-    .select('id, start_at, end_at, status, service_type, description, user_id, profiles(full_name, email, phone, avatar_url)')
+    .select('id, start_at, end_at, status, service_type, description, user_id, payment_screenshot_path, profiles(full_name, email, phone, avatar_url)')
     .eq('status', 'pending')
     .order('start_at', { ascending: true })
   pendingSlots.value = data ?? []
@@ -104,6 +106,31 @@ function nextWeek() {
   loadSlots()
 }
 
+function goToday() {
+  weekStart.value = getMondayOf(new Date())
+  loadSlots()
+}
+
+const isCurrentWeek = computed(
+  () => weekStart.value.getTime() === getMondayOf(new Date()).getTime(),
+)
+
+// The same receipt upload backs both the coaching_slot and its payment row, so
+// a slot decision here also resolves the matching entry in the Payments queue.
+async function syncLinkedPayment(slot, status) {
+  if (!slot.payment_screenshot_path || !session.value) return
+  await supabase
+    .from('payments')
+    .update({
+      status,
+      reviewed_by: session.value.user.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('user_id', slot.user_id)
+    .eq('screenshot_path', slot.payment_screenshot_path)
+    .eq('status', 'pending')
+}
+
 // Sends the decision email and reports delivery so the admin knows the user
 // was actually notified (send-email returns emailSent).
 async function sendDecisionEmail(type, slotId) {
@@ -137,6 +164,7 @@ async function approveSlot({ slot }) {
   // Send the branded approval email (reads meet_link back from the slot).
   const sent = await sendDecisionEmail('coaching_approved', slot.id)
   if (sent) actOk.value = 'Захиалга батлагдаж, хэрэглэгчид имэйл илгээгдлээ.'
+  await syncLinkedPayment(slot, 'approved')
   actingSlotId.value = null
   await Promise.all([loadPendingRequests(), loadSlots(), loadHistory()])
 }
@@ -152,6 +180,7 @@ async function denySlot(slot) {
   if (error) { actErr.value = error.message; actingSlotId.value = null; return }
   const sent = await sendDecisionEmail('coaching_denied', slot.id)
   if (sent) actOk.value = 'Захиалга татгалзагдаж, хэрэглэгчид имэйл илгээгдлээ.'
+  await syncLinkedPayment(slot, 'denied')
   actingSlotId.value = null
   await Promise.all([loadPendingRequests(), loadSlots(), loadHistory()])
 }
@@ -211,6 +240,7 @@ onUnmounted(() => {
           <button class="btn btn-ghost btn-sm" style="padding: 9px" @click="prevWeek"><UiIcon name="chevLeft" :size="17" /></button>
           <div style="font-weight: 600; font-size: 15.5px">{{ weekLabel }}</div>
           <button class="btn btn-ghost btn-sm" style="padding: 9px" @click="nextWeek"><UiIcon name="chevRight" :size="17" /></button>
+          <button v-if="!isCurrentWeek" class="btn btn-ghost btn-sm" @click="goToday">Өнөөдөр</button>
         </div>
         <div class="flex items-center admin-sched-add" style="gap: 10px; margin-left: auto">
           <button class="btn btn-primary btn-sm" @click="calendarRef?.openAddSlot()"><UiIcon name="plus" :size="16" /> Цаг нэмэх</button>

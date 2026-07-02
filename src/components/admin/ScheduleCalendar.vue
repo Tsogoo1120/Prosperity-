@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
 
@@ -33,6 +33,43 @@ const HOURS = computed(() => {
 // the calendar can render a block.
 const SLOT_DURATION_MIN = 60
 
+// Live clock for the "now" indicator line; minute granularity is plenty.
+const now = ref(new Date())
+let nowTimer = null
+onMounted(() => { nowTimer = setInterval(() => { now.value = new Date() }, 60000) })
+onUnmounted(() => { if (nowTimer) clearInterval(nowTimer) })
+
+const todayIdx = computed(() => {
+  const t = toISODate(now.value)
+  return (props.weekDates || []).findIndex((d) => toISODate(d) === t)
+})
+
+// Vertical offset of the current-time line, or null when out of the grid.
+const nowLineTop = computed(() => {
+  if (todayIdx.value < 0) return null
+  const h = now.value.getHours() + now.value.getMinutes() / 60
+  const first = HOURS.value[0]
+  const last = HOURS.value[HOURS.value.length - 1] + 1
+  if (h < first || h > last) return null
+  return (h - first) * HH
+})
+
+const STATUS_LABEL = { available: 'Нээлттэй', pending: 'Хүлээгдэж', booked: 'Захиалсан' }
+
+function cellDate(dayIdx, hour) {
+  const d = new Date(props.weekDates[dayIdx])
+  d.setHours(hour, 0, 0, 0)
+  return d
+}
+
+function isPastCell(dayIdx, hour) {
+  return cellDate(dayIdx, hour) <= now.value
+}
+
+function isPastSlot(slot) {
+  return new Date(slot.start_at) < now.value
+}
+
 // Remembered default times so the coach isn't re-typing the same schedule
 // every day. Persisted in localStorage and pre-loaded into the bulk modal.
 const TEMPLATE_KEY = 'union_slot_template_times'
@@ -55,6 +92,9 @@ const repeatWeeks = ref(1)
 const REPEAT_OPTS = [[1, 'Энэ долоо хоног'], [2, '2 долоо хоног'], [4, '4 долоо хоног'], [8, '8 долоо хоног']]
 const addSlotErr = ref('')
 const addingSlot = ref(false)
+// Cell-click opens with a single time — don't let that overwrite the saved
+// multi-time template the toolbar flow relies on.
+const openedFromCell = ref(false)
 
 const allDaysSelected = computed(() => selectedDayIdx.value.length === 7)
 
@@ -96,11 +136,27 @@ defineExpose({
     const today = toISODate(new Date())
     const idx = (props.weekDates || []).findIndex((d) => toISODate(d) === today)
     selectedDayIdx.value = [idx >= 0 ? idx : 0]
+    slotTimes.value = loadTemplateTimes()
     repeatWeeks.value = 1
     addSlotErr.value = ''
+    openedFromCell.value = false
     showAddSlot.value = true
   },
 })
+
+// Clicking an empty future cell opens the modal pre-filled with exactly that
+// day + hour — the fastest path from "I see a gap" to "slot exists".
+function onCellClick(dayIdx, hour) {
+  if (isPastCell(dayIdx, hour)) return
+  const hh = String(hour).padStart(2, '0') + ':00'
+  selectedDayIdx.value = [dayIdx]
+  slotTimes.value = [hh]
+  timeToAdd.value = hh
+  repeatWeeks.value = 1
+  addSlotErr.value = ''
+  openedFromCell.value = true
+  showAddSlot.value = true
+}
 
 function slotsForDay(dayIndex) {
   const target = props.weekDates[dayIndex]
@@ -195,8 +251,11 @@ async function saveNewSlot() {
   addingSlot.value = false
   if (error) { addSlotErr.value = error.message; return }
 
-  // Remember these times as the new default for next time.
-  try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(slotTimes.value)) } catch { /* ignore */ }
+  // Remember these times as the new default for next time (toolbar flow only —
+  // a single cell-click shouldn't wipe the saved schedule template).
+  if (!openedFromCell.value) {
+    try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(slotTimes.value)) } catch { /* ignore */ }
+  }
 
   showAddSlot.value = false
   emit('slot-added')
@@ -227,17 +286,45 @@ async function deleteSlot() {
 </script>
 
 <template>
-  <div class="scroll-y schedule-scroll" style="flex: 1; overflow-y: auto">
+  <div class="scroll-y schedule-scroll" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column">
+    <!-- legend + hint -->
+    <div
+      class="flex items-center flex-wrap"
+      style="gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); background: var(--surface); font-size: 12.5px; color: var(--muted); position: sticky; left: 0"
+    >
+      <span class="flex items-center" style="gap: 6px">
+        <span style="width: 10px; height: 10px; border-radius: 3px; background: var(--surface-3); border: 1px solid var(--line)" /> Нээлттэй
+      </span>
+      <span class="flex items-center" style="gap: 6px">
+        <span style="width: 10px; height: 10px; border-radius: 3px; background: var(--warn)" /> Хүлээгдэж буй захиалга
+      </span>
+      <span class="flex items-center" style="gap: 6px">
+        <span style="width: 10px; height: 10px; border-radius: 3px; background: var(--primary)" /> Батлагдсан уулзалт
+      </span>
+      <span class="hide-mobile" style="margin-left: auto; color: var(--faint)">
+        Хоосон нүд дээр дарж шинэ цаг нэмнэ
+      </span>
+    </div>
+
     <div style="display: grid; grid-template-columns: 64px repeat(7, 1fr); min-width: 900px">
       <!-- header row -->
       <div style="border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 3" />
       <div
         v-for="(d, i) in DAYS"
         :key="d"
-        style="padding: 12px 0; text-align: center; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 3"
+        :style="{
+          padding: '12px 0', textAlign: 'center', borderBottom: '1px solid var(--line)',
+          borderRight: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 3,
+          background: i === todayIdx ? 'var(--primary-tint)' : 'var(--surface)',
+        }"
       >
         <div class="muted" style="font-size: 12px; font-weight: 600">{{ d }}</div>
-        <div style="font-family: var(--serif); font-weight: 700; font-size: 19px">{{ weekDates[i].getDate() }}</div>
+        <div
+          :style="{
+            fontFamily: 'var(--serif)', fontWeight: 700, fontSize: '19px',
+            color: i === todayIdx ? 'var(--primary-deep)' : 'inherit',
+          }"
+        >{{ weekDates[i].getDate() }}</div>
       </div>
 
       <!-- time gutter -->
@@ -248,12 +335,36 @@ async function deleteSlot() {
       </div>
 
       <!-- day columns -->
-      <div v-for="(d, di) in DAYS" :key="d" style="border-right: 1px solid var(--line); position: relative">
-        <div v-for="h in HOURS" :key="h" :style="{ height: HH + 'px', borderBottom: '1px solid var(--line-soft)' }" />
+      <div
+        v-for="(d, di) in DAYS"
+        :key="d"
+        :style="{
+          borderRight: '1px solid var(--line)', position: 'relative',
+          background: di === todayIdx ? 'color-mix(in srgb, var(--primary-tint) 40%, transparent)' : 'transparent',
+        }"
+      >
+        <div
+          v-for="h in HOURS"
+          :key="h"
+          :class="isPastCell(di, h) ? 'cal-cell-past' : 'cal-cell'"
+          :style="{ height: HH + 'px', borderBottom: '1px solid var(--line-soft)' }"
+          @click="onCellClick(di, h)"
+        />
+
+        <!-- current time line -->
+        <div
+          v-if="di === todayIdx && nowLineTop !== null"
+          :style="{
+            position: 'absolute', left: 0, right: 0, top: nowLineTop + 'px',
+            height: '2px', background: 'var(--bad)', zIndex: 2, pointerEvents: 'none',
+          }"
+          class="now-line"
+        />
+
         <div
           v-for="s in slotsForDay(di)"
           :key="s.id"
-          @click="onSlotClick(s)"
+          @click.stop="onSlotClick(s)"
           :style="{
             position: 'absolute',
             left: '5px',
@@ -269,11 +380,16 @@ async function deleteSlot() {
             cursor: s.status === 'available' ? 'pointer' : 'default',
             borderLeft: s.status === 'pending' ? '3px solid var(--warn)' : s.status === 'booked' ? '3px solid var(--primary-deep)' : '3px solid var(--line)',
             fontSize: '12px',
+            opacity: isPastSlot(s) ? 0.5 : 1,
+            zIndex: 1,
           }"
         >
-          <div style="font-weight: 600; line-height: 1.2">{{ slotLabel(s) }}</div>
-          <div style="opacity: 0.75; font-size: 11px">{{ s.status }}</div>
-          <div v-if="s.profiles?.full_name" style="opacity: 0.7; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ s.profiles.full_name }}</div>
+          <div style="font-weight: 600; line-height: 1.2">
+            {{ new Date(s.start_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) }}
+            · {{ STATUS_LABEL[s.status] || s.status }}
+          </div>
+          <div v-if="s.profiles?.full_name" style="opacity: 0.8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ s.profiles.full_name }}</div>
+          <div v-else style="opacity: 0.65; font-size: 11px">{{ slotLabel(s) }}</div>
         </div>
       </div>
     </div>
@@ -328,7 +444,8 @@ async function deleteSlot() {
 
           <!-- Times: each becomes a slot on every selected day -->
           <div class="field">
-            <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block">Цагууд</label>
+            <label style="font-size: 13px; font-weight: 600; margin-bottom: 4px; display: block">Цагууд</label>
+            <p class="muted" style="font-size: 12px; margin: 0 0 8px">Цаг бүр 60 минутын нэг уулзалт болно. Сонгосон өдөр бүрт давтагдана.</p>
             <div v-if="slotTimes.length" style="display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px">
               <span
                 v-for="t in slotTimes"
@@ -411,6 +528,46 @@ async function deleteSlot() {
 </template>
 
 <style scoped>
+.cal-cell {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s;
+}
+.cal-cell:hover {
+  background: var(--primary-tint);
+}
+.cal-cell:hover::after {
+  content: '+ Цаг нэмэх';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--primary-deep);
+  pointer-events: none;
+}
+.cal-cell-past {
+  cursor: default;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    color-mix(in srgb, var(--line-soft) 55%, transparent) 6px,
+    color-mix(in srgb, var(--line-soft) 55%, transparent) 7px
+  );
+}
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bad);
+}
 .modal-scrim {
   position: fixed;
   inset: 0;
