@@ -5,6 +5,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export function useAvailableSlots() {
   const rawSlots = ref([])
+  const slotsError = ref(false)
 
   const dayMap = computed(() => {
     const map = {}
@@ -25,16 +26,22 @@ export function useAvailableSlots() {
   const availDays = computed(() => Object.values(dayMap.value))
 
   async function loadAvailableSlots() {
+    slotsError.value = false
     const now = new Date().toISOString()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('coaching_slots')
       .select('id, start_at, end_at, service_type')
       .eq('status', 'available')
       .is('user_id', null)
       .gte('start_at', now)
       .order('start_at', { ascending: true })
+    if (error) {
+      console.error('[slots] fetch failed:', error.message)
+      slotsError.value = true
+      return
+    }
     rawSlots.value = data ?? []
   }
 
-  return { rawSlots, dayMap, availDays, loadAvailableSlots }
+  return { rawSlots, dayMap, availDays, slotsError, loadAvailableSlots }
 }

@@ -51,7 +51,7 @@ function login() {
         </button>
 
         <div class="login-divider">
-          <span class="muted" style="font-size: 13px">Subscriptiion байхгүй бол</span>
+          <span class="muted" style="font-size: 13px">Гишүүнчлэл байхгүй бол</span>
         </div>
 
         <button class="btn btn-ghost login-enroll-btn" @click="emit('nav', 'enroll')">

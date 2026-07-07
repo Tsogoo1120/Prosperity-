@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useSidebar } from '@/composables/useSidebar.js'
 import { useAuth } from '@/composables/useAuth.js'
@@ -16,7 +16,18 @@ import AdminMembers from '@/components/admin/AdminMembers.vue'
 
 const emit = defineEmits(['nav'])
 
-const { session, profile, signOut } = useAuth()
+const { session, profile, loading, signOut, isAdmin } = useAuth()
+
+// RLS already blocks non-admin data reads; this guard keeps the admin shell
+// itself off-screen for anyone who lands here without the role.
+watchEffect(() => {
+  if (loading.value) return
+  if (!session.value) {
+    emit('nav', 'login')
+  } else if (!isAdmin()) {
+    emit('nav', 'landing')
+  }
+})
 
 const userName = computed(() => {
   const name = profile.value?.full_name ?? session.value?.user?.user_metadata?.full_name ?? session.value?.user?.user_metadata?.name ?? ''
@@ -34,12 +45,16 @@ async function handleLogout() {
 }
 
 async function loadPending() {
-  const [{ count: pay }, { count: slots }] = await Promise.all([
-    supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('coaching_slots').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-  ])
-  pending.value = pay ?? 0
-  pendingMeetings.value = slots ?? 0
+  try {
+    const [{ count: pay }, { count: slots }] = await Promise.all([
+      supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('coaching_slots').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    ])
+    pending.value = pay ?? 0
+    pendingMeetings.value = slots ?? 0
+  } catch (e) {
+    console.error('[admin] pending counts failed:', e)
+  }
 }
 
 onMounted(loadPending)

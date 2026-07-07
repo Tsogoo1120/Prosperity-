@@ -11,11 +11,12 @@ async function fetchProfile(userId) {
   } catch {
     // RPC may be unavailable before migration is applied
   }
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .select('id, full_name, email, phone, avatar_url, subscription_status, role, is_admin')
     .eq('id', userId)
     .single()
+  if (error) console.error('[auth] profile fetch failed:', error.message)
   profile.value = data ?? null
 }
 
@@ -61,12 +62,14 @@ async function signOut() {
 
 async function updateProfile(updates) {
   if (!session.value) return
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .upsert({ id: session.value.user.id, ...updates })
     .select('id, full_name, email, phone, avatar_url, subscription_status, role')
     .single()
+  if (error) console.error('[auth] profile update failed:', error.message)
   if (data) profile.value = data
+  return error ?? null
 }
 
 export function useAuth() {
