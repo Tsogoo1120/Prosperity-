@@ -40,18 +40,25 @@ const STEP_LABELS = {
 // ── Available slots fetching ──────────────────────────────────────────────────
 const rawSlots = ref([])
 const loadingSlots = ref(false)
+const slotsError = ref(false)
 
 async function loadAvailableSlots() {
   loadingSlots.value = true
+  slotsError.value = false
   const now = new Date().toISOString()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('coaching_slots')
     .select('id, start_at, end_at, service_type')
     .eq('status', 'available')
     .is('user_id', null)
     .gte('start_at', now)
     .order('start_at', { ascending: true })
-  rawSlots.value = data ?? []
+  if (error) {
+    console.error('[enroll] slots fetch failed:', error.message)
+    slotsError.value = true
+  } else {
+    rawSlots.value = data ?? []
+  }
   loadingSlots.value = false
 }
 
@@ -112,23 +119,28 @@ onUnmounted(() => {
   clearTimeout(copiedTimer)
 })
 
+const isSubscriber = computed(
+  () => profile.value?.subscription_status === 'active',
+)
+const googleConnected = computed(() => !!session.value)
+
 const stepSequence = computed(() => {
   // Slot first, login gate second: user commits to a time before Google login,
   // so they never authenticate just to discover no slot exists.
   const full = selectedService.value.requiresBooking
     ? ['plan', 'booking', 'account', 'payment', 'review']
     : ['plan', 'account', 'payment', 'review']
+  let seq = full
   // Slot already chosen on the landing page → skip the booking step here.
-  if (bookingFromLanding.value) return full.filter((s) => s !== 'booking')
-  return full
+  if (bookingFromLanding.value) seq = seq.filter((s) => s !== 'booking')
+  // Signed-in subscriber: the account step has nothing left to do — their
+  // selections and 30% discount carry over, so go straight to payment.
+  if (googleConnected.value && isSubscriber.value) seq = seq.filter((s) => s !== 'account')
+  return seq
 })
 
 const stepLabels = computed(() => stepSequence.value.map((s) => STEP_LABELS[s]))
 const stepType = computed(() => stepSequence.value[step.value] || 'review')
-
-const isSubscriber = computed(
-  () => profile.value?.subscription_status === 'active',
-)
 
 const intentServiceId = computed(() => pendingPrefill.value?.serviceId ?? null)
 
@@ -148,7 +160,6 @@ const finalPrice = computed(() =>
   discountActive.value ? Math.round(basePrice.value * (1 - DISCOUNT_RATE)) : basePrice.value,
 )
 
-const googleConnected = computed(() => !!session.value)
 const uploaded = computed(() => !!receiptFile.value)
 
 const continueDisabled = computed(() => {
@@ -184,8 +195,23 @@ watch(selectedService, () => {
   if (step.value > 0) step.value = 0
 })
 
-watch(stepSequence, (seq) => {
-  if (step.value >= seq.length) step.value = Math.max(0, seq.length - 1)
+// When the sequence changes shape (booking skipped, account dropped for
+// subscribers), keep the user on the SAME step by name — a raw index would
+// silently point at a different step after filtering.
+watch(stepSequence, (seq, oldSeq) => {
+  if (restoringIntent) {
+    if (step.value >= seq.length) step.value = Math.max(0, seq.length - 1)
+    return
+  }
+  const name = oldSeq?.[step.value]
+  let idx = name ? seq.indexOf(name) : -1
+  if (idx < 0 && name && oldSeq) {
+    // Current step vanished (e.g. account removed once subscriber logged in):
+    // move forward to the next step that still exists.
+    const following = oldSeq.slice(oldSeq.indexOf(name) + 1).find((n) => seq.includes(n))
+    if (following) idx = seq.indexOf(following)
+  }
+  step.value = idx >= 0 ? idx : Math.min(step.value, seq.length - 1)
 })
 
 // Pre-fill form from profile when session loads
@@ -220,6 +246,16 @@ watch(rawSlots, () => {
   //    at mount, so retry once they arrive).
   if (!bookSlot.value && pendingPrefill.value) {
     applyBookingPrefill(pendingPrefill.value)
+    // Fresh slot list arrived and the saved slot is gone (someone claimed it):
+    // stop retrying and pull the user back to the booking step before payment.
+    if (!bookSlot.value && !loadingSlots.value) {
+      pendingPrefill.value = null
+      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
+      nextTick(() => {
+        const bi = stepSequence.value.indexOf('booking')
+        if (bi >= 0 && step.value > bi) step.value = bi
+      })
+    }
   }
   // 2. Auto-select the first available day so the booking step opens on a
   //    populated time grid instead of an empty "pick a day" state.
@@ -264,7 +300,14 @@ function applyEnrollIntent() {
         pendingPrefill.value = intent
         applyBookingPrefill(intent) // succeeds if rawSlots already loaded, else watcher retries
       }
-      if (intent.step !== undefined) step.value = intent.step
+      if (intent.stepName) {
+        const idx = stepSequence.value.indexOf(intent.stepName)
+        // Saved step may no longer exist (subscriber skips account) — in that
+        // case jump straight to payment, which is exactly what they came for.
+        step.value = idx >= 0 ? idx : Math.max(0, stepSequence.value.indexOf('payment'))
+      } else if (intent.step !== undefined) {
+        step.value = intent.step
+      }
       // Let the selectedService watcher settle without resetting the restored step
       nextTick(() => { restoringIntent = false })
     } catch {
@@ -273,6 +316,16 @@ function applyEnrollIntent() {
     }
   }
 }
+
+// After the OAuth redirect the page reloads with screen already at 'enroll',
+// so this component mounts BEFORE App.vue transfers the post-oauth payload
+// into 'union-enroll-intent'. Re-check once auth settles; nextTick guarantees
+// App.vue's own watcher (registered earlier) has already written the intent.
+watch([loading, session, profile], async () => {
+  if (loading.value || !session.value || !profile.value) return
+  await nextTick()
+  applyEnrollIntent()
+})
 
 onMounted(() => {
   loadAvailableSlots()
@@ -286,7 +339,9 @@ function connectGoogle() {
   // Save current state so App.vue can restore it after the OAuth redirect.
   // Include the selected slot + reading type so the user isn't sent back to
   // re-pick a slot they already chose on the landing page.
-  const intent = { serviceId: selectedService.value.id, step: step.value }
+  // Save the step by NAME: after login the sequence may lose steps (booking
+  // skipped, account dropped for subscribers), so a raw index would drift.
+  const intent = { serviceId: selectedService.value.id, stepName: stepType.value }
   if (bookDate.value && bookSlot.value) {
     intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso }
     intent.bookSlot = { id: bookSlot.value.id, time: bookSlot.value.time }
@@ -335,63 +390,47 @@ async function submitPayment() {
     return
   }
 
-  // Claim the coaching slot if applicable
-  if (bookSlot.value?.id) {
-    const { error: slotErr } = await supabase
-      .from('coaching_slots')
-      .update({
-        status: 'pending',
-        user_id: userId,
-        description: `Enrollment: ${selectedService.value.title}${selectedTarotOption.value ? ' - ' + selectedTarotOption.value.title : ''}`,
-        payment_screenshot_path: path,
-      })
-      .eq('id', bookSlot.value.id)
-      .eq('status', 'available')
+  // Slot claim + payment insert + subscription flip run atomically server-side:
+  // any failure rolls the whole thing back, so a slot can never be stranded in
+  // 'pending' without a matching payment row.
+  const { data: paymentId, error: rpcErr } = await supabase.rpc('submit_enrollment', {
+    p_screenshot_path: path,
+    p_amount: finalPrice.value,
+    p_service_type: selectedService.value.id,
+    p_bank_reference: bankReference.value,
+    p_slot_id: bookSlot.value?.id ?? null,
+    p_slot_description: bookSlot.value
+      ? `Enrollment: ${selectedService.value.title}${selectedTarotOption.value ? ' - ' + selectedTarotOption.value.title : ''}`
+      : null,
+  })
 
-    if (slotErr) {
-      await supabase.storage.from('payment-screenshots').remove([path])
-      submitError.value = 'Цаг захиалахад алдаа гарлаа. Энэ цаг аль хэдийн захиалагдсан байж магадгүй.'
+  if (rpcErr) {
+    await supabase.storage.from('payment-screenshots').remove([path]).catch(() => {})
+    if (rpcErr.message?.includes('slot_unavailable')) {
+      // Someone claimed the slot between selection and submit: clear it and
+      // send the user back to the booking step to pick again.
+      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
+      bookSlot.value = null
+      bookingFromLanding.value = false
       submitting.value = false
+      nextTick(() => {
+        const bi = stepSequence.value.indexOf('booking')
+        if (bi >= 0) step.value = bi
+      })
       return
     }
-  }
-
-  const { data: paymentRow, error: insertErr } = await supabase
-    .from('payments')
-    .insert({
-      user_id: userId,
-      screenshot_path: path,
-      amount: finalPrice.value,
-      currency: 'MNT',
-      status: 'pending',
-      service_type: selectedService.value.id,
-      bank_reference: bankReference.value,
-    })
-    .select('id')
-    .single()
-
-  if (insertErr) {
-    // If we claimed a slot but payment record failed, we might want to revert the slot claim
-    // but usually, we'd rather keep it pending or handle it manually.
-    // For now, let's just report the error.
-    submitError.value = 'Мэдээлэл хадгалахад алдаа: ' + insertErr.message
+    submitError.value = 'Мэдээлэл хадгалахад алдаа: ' + rpcErr.message
     submitting.value = false
     return
   }
 
-  // Flip profile to pending ONLY for subscription purchases.
-  // Meeting bookings (tarot/coaching) must NOT touch subscription state.
-  if (selectedService.value.id === 'subscription') {
-    try { await supabase.rpc('submit_payment_flip_pending') } catch {}
-  }
-
   // Fire-and-forget emails — failures must not block the user
-  if (paymentRow?.id) {
+  if (paymentId) {
     supabase.functions
       .invoke('send-email', { body: { type: 'payment_received', userId, amount: finalPrice.value, currency: 'MNT' } })
       .catch(() => {})
     supabase.functions
-      .invoke('send-email', { body: { type: 'admin_new_payment', userId, paymentId: paymentRow.id } })
+      .invoke('send-email', { body: { type: 'admin_new_payment', userId, paymentId } })
       .catch(() => {})
   }
 
@@ -778,6 +817,16 @@ const serviceIcons = { subscription: 'book', tarot: 'star' }
             >
               <span style="font-size: 12px; font-weight: 600; opacity: 0.7">{{ day.d }}</span>
               <span style="font-size: 21px; font-family: var(--serif); font-weight: 600">{{ day.n }}</span>
+            </button>
+          </div>
+          <div
+            v-else-if="slotsError"
+            class="flex items-center"
+            style="gap: 10px; margin-bottom: 26px; padding: 10px 14px; background: var(--bad-tint); border-radius: 10px; font-size: 13.5px; color: var(--bad)"
+          >
+            <span>Цагийн мэдээлэл ачаалагдсангүй.</span>
+            <button type="button" class="btn btn-ghost btn-sm" @click="loadAvailableSlots">
+              Дахин оролдох
             </button>
           </div>
           <p v-else-if="!loadingSlots" class="muted" style="font-size: 14px; margin-bottom: 26px">Одоогоор боломжит цаг байхгүй байна.</p>
