@@ -2,10 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import { useAuth } from '@/composables/useAuth.js'
-import { getPublicImageUrl } from '@/lib/videoUpload.js'
+import { getPublicImageUrl, getStreamIframeUrl } from '@/lib/videoUpload.js'
 import UiIcon from '@/components/common/UiIcon.vue'
+import UiAvatar from '@/components/common/UiAvatar.vue'
+import { timeAgo } from '@/utils/time.js'
 
-const { session } = useAuth()
+const { session, profile } = useAuth()
 
 const loading = ref(true)
 const reading = ref(null)
@@ -13,6 +15,40 @@ const piles = ref([])
 const pick = ref(null)
 const revealing = ref(false)
 const saving = ref(false)
+
+const comments = ref([])
+const commentBody = ref('')
+const postingComment = ref(false)
+
+async function loadComments(readingId) {
+  const { data } = await supabase
+    .from('reading_comments')
+    .select('id, user_id, body, created_at, profiles(full_name, avatar_url)')
+    .eq('reading_id', readingId)
+    .eq('is_hidden', false)
+    .order('created_at', { ascending: true })
+  comments.value = data ?? []
+}
+
+async function postComment() {
+  const body = commentBody.value.trim()
+  if (!body || !session.value || postingComment.value) return
+  postingComment.value = true
+  const { error } = await supabase
+    .from('reading_comments')
+    .insert({ reading_id: reading.value.id, user_id: session.value.user.id, body })
+  if (!error) {
+    commentBody.value = ''
+    await loadComments(reading.value.id)
+  }
+  postingComment.value = false
+}
+
+async function removeComment(c) {
+  if (c.user_id !== session.value?.user?.id) return
+  await supabase.from('reading_comments').delete().eq('id', c.id)
+  comments.value = comments.value.filter((x) => x.id !== c.id)
+}
 
 async function load() {
   loading.value = true
@@ -47,6 +83,7 @@ async function load() {
         .maybeSingle()
       pick.value = existing ?? null
     }
+    await loadComments(r.id)
   }
   loading.value = false
 }
@@ -55,6 +92,10 @@ onMounted(load)
 
 const pickedPile = computed(() =>
   pick.value ? piles.value.find((p) => p.id === pick.value.pile_id) ?? null : null,
+)
+
+const pickedVideoUrl = computed(() =>
+  pickedPile.value?.video_uid ? getStreamIframeUrl(pickedPile.value.video_uid) : null,
 )
 
 async function choose(pile) {
@@ -155,9 +196,22 @@ function reset() {
 
       <!-- Revealed state -->
       <div v-else class="card rise" :class="{ 'flip-in': revealing }" style="border-radius: 18px; overflow: hidden">
+        <!-- Video reading for the chosen pile -->
+        <div
+          v-if="pickedVideoUrl"
+          style="aspect-ratio: 16/9; background: #000"
+        >
+          <iframe
+            :src="pickedVideoUrl"
+            :title="pickedPile.label || `Pile ${pickedPile.position}`"
+            style="width: 100%; height: 100%; border: none; display: block"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture;"
+            allowfullscreen
+          />
+        </div>
         <div
           v-if="pickedPile.image_path"
-          style="aspect-ratio: 21/9; overflow: hidden; background: var(--surface-2)"
+          :style="{ aspectRatio: pickedVideoUrl ? '32/9' : '21/9', overflow: 'hidden', background: 'var(--surface-2)' }"
         >
           <img
             :src="getPublicImageUrl(pickedPile.image_path)"
@@ -178,6 +232,62 @@ function reset() {
             <button class="btn btn-ghost btn-sm" @click="reset">
               <UiIcon name="layers" :size="15" /> Choose a different pile
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comments — open after the user has revealed their pile -->
+      <div v-if="pickedPile" class="card rise" style="border-radius: 18px; margin-top: 18px; padding: 22px 24px">
+        <div class="flex items-center" style="gap: 8px; margin-bottom: 16px">
+          <UiIcon name="message" :size="18" style="color: var(--primary)" />
+          <h4 style="font-size: 15.5px">Сэтгэгдэл</h4>
+          <span class="muted" style="font-size: 12.5px">{{ comments.length }}</span>
+        </div>
+
+        <div v-if="comments.length" class="flex flex-col" style="gap: 14px; margin-bottom: 18px">
+          <div v-for="c in comments" :key="c.id" class="flex items-start" style="gap: 10px">
+            <UiAvatar :name="c.profiles?.full_name || '?'" :size="32" />
+            <div style="flex: 1; min-width: 0">
+              <div class="flex items-center" style="gap: 8px">
+                <span style="font-weight: 600; font-size: 13.5px">{{ c.profiles?.full_name || 'Гишүүн' }}</span>
+                <span class="muted" style="font-size: 12px">{{ timeAgo(c.created_at) }}</span>
+                <button
+                  v-if="c.user_id === session?.user?.id"
+                  class="muted"
+                  style="border: none; background: none; cursor: pointer; font-size: 12px; padding: 0"
+                  @click="removeComment(c)"
+                >
+                  Устгах
+                </button>
+              </div>
+              <p style="font-size: 14px; color: var(--ink-soft); line-height: 1.55; margin-top: 2px; white-space: pre-wrap">{{ c.body }}</p>
+            </div>
+          </div>
+        </div>
+        <p v-else class="muted" style="font-size: 13.5px; margin-bottom: 16px">
+          Анхны сэтгэгдлээ үлдээгээрэй — уншлага танд юу мэдрүүлснийг хуваалцаарай.
+        </p>
+
+        <div class="flex items-start" style="gap: 10px">
+          <UiAvatar :name="profile?.full_name || 'You'" :size="32" />
+          <div style="flex: 1">
+            <textarea
+              v-model="commentBody"
+              class="textarea"
+              rows="2"
+              placeholder="Сэтгэгдэл бичих…"
+              style="width: 100%; font-size: 14px"
+              @keydown.enter.exact.prevent="postComment"
+            />
+            <div class="flex items-center justify-end" style="margin-top: 8px">
+              <button
+                class="btn btn-primary btn-sm"
+                :disabled="!commentBody.trim() || postingComment"
+                @click="postComment"
+              >
+                {{ postingComment ? 'Илгээж байна…' : 'Илгээх' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>

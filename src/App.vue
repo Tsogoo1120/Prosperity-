@@ -9,7 +9,7 @@ import StudentApp from '@/views/StudentApp.vue'
 import AdminApp from '@/views/AdminApp.vue'
 
 const { tweaks, setTweak } = useTweaks()
-const { session, profile, loading, init, isAdmin } = useAuth()
+const { session, profile, loading, init, isAdmin, hasReadingAccess } = useAuth()
 
 const screen = ref(localStorage.getItem('union-screen') || 'landing')
 function nav(s) {
@@ -50,7 +50,9 @@ function handlePostOAuth() {
       if (isAdmin()) {
         nav('admin')
       } else {
-        nav(profile.value?.subscription_status === 'active' ? 'student' : 'enroll')
+        // Reading-pass holders (15,000₮ collective reading) also enter the
+        // student app — they only see the Community/reading area inside.
+        nav(profile.value?.subscription_status === 'active' || hasReadingAccess() ? 'student' : 'enroll')
       }
     } else {
       // Enroll flow: restore service + step

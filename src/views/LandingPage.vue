@@ -5,6 +5,7 @@ import TopNav from '@/components/landing/TopNav.vue'
 import HeroSection from '@/components/landing/HeroSection.vue'
 import VideoIntroSection from '@/components/landing/VideoIntroSection.vue'
 import VideoLessonsSection from '@/components/landing/VideoLessonsSection.vue'
+import CollectiveReadingSection from '@/components/landing/CollectiveReadingSection.vue'
 import MentorSection from '@/components/landing/MentorSection.vue'
 import ClosingCta from '@/components/landing/ClosingCta.vue'
 import SiteFooter from '@/components/landing/SiteFooter.vue'
@@ -96,6 +97,7 @@ onBeforeUnmount(() => {
     <HeroSection @nav="emit('nav', $event)" />
     <VideoIntroSection @nav="emit('nav', $event)" />
     <VideoLessonsSection @nav="emit('nav', $event)" />
+    <CollectiveReadingSection @nav="emit('nav', $event)" />
     <MentorSection @book="booking = true" />
     <ClosingCta />
     <SiteFooter @nav="emit('nav', $event)" />

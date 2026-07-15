@@ -148,12 +148,23 @@ function serviceRecommendLabel(serviceId) {
   const intent = intentServiceId.value
   if (!intent) return null
   if (serviceId === intent) return 'Санал болгох'
+  // Subscription includes the collective reading for free, so pitch it as
+  // "included" — the discount pitch only makes sense for meeting services.
+  if (intent === 'reading' && serviceId === 'subscription') return 'Үнэгүй багтана'
   if (intent !== 'subscription' && serviceId === 'subscription') return 'Хөнгөлөлт авах'
   return null
 }
 
+// 30% subscriber discount applies to booked meetings only — the collective
+// reading is already free for subscribers, never discounted.
 const discountActive = computed(
-  () => isSubscriber.value && selectedService.value.id !== 'subscription',
+  () => isSubscriber.value && selectedService.value.requiresBooking,
+)
+
+// Active subscriber picked the collective reading: nothing to buy, it's
+// already included — steer them into the app instead of the payment flow.
+const readingIncluded = computed(
+  () => isSubscriber.value && selectedService.value.id === 'reading',
 )
 const basePrice = computed(() => selectedService.value.price)
 const finalPrice = computed(() =>
@@ -164,8 +175,10 @@ const uploaded = computed(() => !!receiptFile.value)
 
 const continueDisabled = computed(() => {
   if (submitting.value) return true
-  if (stepType.value === 'plan')
+  if (stepType.value === 'plan') {
+    if (readingIncluded.value) return true
     return selectedService.value.id === 'tarot' && !selectedTarotOption.value
+  }
   if (stepType.value === 'account')
     return !googleConnected.value
   if (stepType.value === 'booking') return !bookDate.value || !bookSlot.value
@@ -504,7 +517,7 @@ function fmtMNT(v) {
   return v.toLocaleString('mn-MN') + ' ₮'
 }
 
-const serviceIcons = { subscription: 'book', tarot: 'star' }
+const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
 </script>
 
 <template>
@@ -603,7 +616,14 @@ const serviceIcons = { subscription: 'book', tarot: 'star' }
                     {{ serviceRecommendLabel(s.id) }}
                   </span>
                   <span
-                    v-else-if="isSubscriber && s.id !== 'subscription'"
+                    v-else-if="isSubscriber && s.id === 'reading'"
+                    class="chip"
+                    style="background: var(--sage-tint); color: var(--sage-deep); font-size: 11.5px"
+                  >
+                    Гишүүнчлэлд багтсан
+                  </span>
+                  <span
+                    v-else-if="isSubscriber && s.requiresBooking"
                     class="chip"
                     style="background: var(--sage-tint); color: var(--sage-deep); font-size: 11.5px"
                   >
@@ -618,7 +638,7 @@ const serviceIcons = { subscription: 'book', tarot: 'star' }
               <!-- price -->
               <div style="text-align: right; flex: none">
                 <div
-                  v-if="isSubscriber && s.id !== 'subscription'"
+                  v-if="isSubscriber && s.requiresBooking"
                   class="muted"
                   style="font-size: 12px; text-decoration: line-through"
                 >
@@ -627,17 +647,26 @@ const serviceIcons = { subscription: 'book', tarot: 'star' }
                 <div
                   style="font-family: var(--serif); font-weight: 700; font-size: 20px; color: var(--ink)"
                 >
-                  <span v-if="isSubscriber && s.id !== 'subscription'">
+                  <span v-if="isSubscriber && s.requiresBooking">
                     {{ fmtMNT(Math.round(s.price * 0.7)) }}
+                  </span>
+                  <span v-else-if="isSubscriber && s.id === 'reading'" style="color: var(--sage-deep)">
+                    Үнэгүй
                   </span>
                   <span v-else>{{ s.priceDisplay }}</span>
                 </div>
                 <div class="muted" style="font-size: 12px">{{ s.period }}</div>
                 <div
-                  v-if="!isSubscriber && s.id !== 'subscription'"
+                  v-if="!isSubscriber && s.requiresBooking"
                   style="font-size: 11.5px; color: var(--sage-deep); margin-top: 2px"
                 >
                   Гишүүнд {{ fmtMNT(Math.round(s.price * 0.7)) }}
+                </div>
+                <div
+                  v-if="!isSubscriber && s.id === 'reading'"
+                  style="font-size: 11.5px; color: var(--sage-deep); margin-top: 2px"
+                >
+                  Гишүүнд үнэгүй
                 </div>
               </div>
 
@@ -660,6 +689,25 @@ const serviceIcons = { subscription: 'book', tarot: 'star' }
               >
                 <UiIcon name="check" :size="15" style="color: var(--sage-deep); flex: none" />
                 {{ f }}
+              </div>
+            </div>
+
+            <!-- subscriber already owns the collective reading — no purchase -->
+            <div
+              v-if="s.id === 'reading' && selectedService.id === 'reading' && isSubscriber"
+              class="enroll-tarot-panel"
+            >
+              <div
+                class="flex items-center flex-wrap"
+                style="gap: 12px; padding: 12px 14px; background: var(--sage-tint); border-radius: 12px"
+              >
+                <UiIcon name="checkCircle" :size="18" style="color: var(--sage-deep); flex: none" />
+                <span style="flex: 1; min-width: 200px; font-size: 13.5px; color: var(--sage-deep)">
+                  Хамтын уншлага таны гишүүнчлэлд аль хэдийн багтсан — төлбөр төлөх шаардлагагүй.
+                </span>
+                <button class="btn btn-primary btn-sm" @click.stop="emit('nav', 'student')">
+                  Уншлага үзэх <UiIcon name="arrowRight" :size="15" />
+                </button>
               </div>
             </div>
 

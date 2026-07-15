@@ -1,10 +1,18 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase.js'
-import { uploadPublicImage, getPublicImageUrl } from '@/lib/videoUpload.js'
+import { useAuth } from '@/composables/useAuth.js'
+import {
+  uploadPublicImage,
+  getPublicImageUrl,
+  uploadVideoToCloudflareStream,
+  getStreamIframeUrl,
+} from '@/lib/videoUpload.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import ImageSlot from '@/components/common/ImageSlot.vue'
 import { timeAgo } from '@/utils/time.js'
+
+const { session } = useAuth()
 
 const readings = ref([])
 const loading = ref(true)
@@ -14,6 +22,9 @@ const newTitle = ref('')
 const newIntro = ref('')
 const savingPile = ref(null)
 const uploadingPile = ref(null)
+const uploadingVideoPile = ref(null)
+const videoProgress = ref(0)
+const videoError = ref('')
 
 async function fetchReadings() {
   loading.value = true
@@ -105,6 +116,33 @@ async function onPileImage(pile, file) {
     await supabase.from('reading_piles').update({ image_path: path }).eq('id', pile.id)
   }
   uploadingPile.value = null
+}
+
+// Cloudflare Stream video per pile — same pipeline lessons use.
+async function onPileVideo(pile, event) {
+  const file = event.target.files?.[0]
+  event.target.value = '' // allow re-selecting the same file
+  if (!file) return
+  const token = session.value?.access_token
+  if (!token) return
+  videoError.value = ''
+  uploadingVideoPile.value = pile.id
+  videoProgress.value = 0
+  const r = await uploadVideoToCloudflareStream(file, 'desktop', token, (p) => {
+    videoProgress.value = p
+  })
+  if (r.error) {
+    videoError.value = r.error
+  } else if (r.uid) {
+    pile.video_uid = r.uid
+    await supabase.from('reading_piles').update({ video_uid: r.uid }).eq('id', pile.id)
+  }
+  uploadingVideoPile.value = null
+}
+
+async function removePileVideo(pile) {
+  pile.video_uid = null
+  await supabase.from('reading_piles').update({ video_uid: null }).eq('id', pile.id)
 }
 </script>
 
@@ -211,6 +249,49 @@ async function onPileImage(pile, file) {
                 />
               </div>
               <div v-if="uploadingPile === pile.id" class="muted" style="font-size: 12px; margin-bottom: 8px">Uploading…</div>
+
+              <!-- Pile video (Cloudflare Stream) -->
+              <div style="margin-bottom: 10px">
+                <div v-if="pile.video_uid" style="border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16/9; margin-bottom: 6px">
+                  <iframe
+                    :src="getStreamIframeUrl(pile.video_uid)"
+                    style="width: 100%; height: 100%; border: none; display: block"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture;"
+                    allowfullscreen
+                  />
+                </div>
+                <div v-if="uploadingVideoPile === pile.id" style="margin-bottom: 6px">
+                  <div style="height: 6px; border-radius: 4px; background: var(--line); overflow: hidden">
+                    <div :style="{ width: Math.round(videoProgress * 100) + '%', height: '100%', background: 'var(--primary)', transition: 'width .2s' }" />
+                  </div>
+                  <div class="muted" style="font-size: 11.5px; margin-top: 3px">Uploading video… {{ Math.round(videoProgress * 100) }}%</div>
+                </div>
+                <div class="flex items-center" style="gap: 8px">
+                  <label
+                    class="btn btn-ghost btn-sm"
+                    :style="{ cursor: uploadingVideoPile ? 'wait' : 'pointer' }"
+                  >
+                    <UiIcon name="video" :size="14" />
+                    {{ pile.video_uid ? 'Replace video' : 'Add video' }}
+                    <input
+                      type="file"
+                      accept="video/*"
+                      style="display: none"
+                      :disabled="!!uploadingVideoPile"
+                      @change="(e) => onPileVideo(pile, e)"
+                    />
+                  </label>
+                  <button
+                    v-if="pile.video_uid"
+                    class="btn btn-ghost btn-sm"
+                    style="color: var(--clay)"
+                    @click="removePileVideo(pile)"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div v-if="videoError && uploadingVideoPile === null" style="font-size: 12px; color: var(--bad); margin-top: 4px">{{ videoError }}</div>
+              </div>
 
               <input
                 v-model="pile.label"

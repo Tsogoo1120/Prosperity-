@@ -14,18 +14,35 @@ import BookingModal from '@/components/landing/BookingModal.vue'
 
 const emit = defineEmits(['nav'])
 
-const { session, profile, loading, signOut } = useAuth()
+const { session, profile, loading, signOut, isSubscriber, hasReadingAccess } = useAuth()
+
+// Reading-pass holders (15,000₮) may enter, but only the Community area —
+// everything else stays subscriber-only.
+const readerOnly = computed(() => !isSubscriber() && hasReadingAccess())
 
 watchEffect(() => {
   if (loading.value) return
   if (!session.value) {
     emit('nav', 'login')
-  } else if (profile.value?.subscription_status !== 'active') {
+  } else if (profile.value && !isSubscriber() && !hasReadingAccess()) {
     emit('nav', 'enroll')
   }
 })
 
 const view = ref('dashboard')
+
+// Reading-pass users land straight on the collective reading, and any attempt
+// to open a locked view snaps back to community.
+watchEffect(() => {
+  if (readerOnly.value && view.value !== 'community') view.value = 'community'
+})
+
+// Locked sidebar item tapped by a reading-pass user → send them to the
+// subscription enroll flow with the right service preselected.
+function goUpgrade() {
+  sessionStorage.setItem('union-enroll-intent', JSON.stringify({ serviceId: 'subscription' }))
+  emit('nav', 'enroll')
+}
 const booking = ref(false)
 // Slot id to preselect inside the booking modal (set when the user taps a
 // specific available time in SessionsView).
@@ -88,6 +105,8 @@ async function handleLogout() {
       :view="view"
       :open="sidebarOpen"
       :user-name="userName"
+      :reader-only="readerOnly"
+      @upgrade="goUpgrade"
       @set-view="setView"
       @nav="emit('nav', $event)"
       @close="closeSidebar"
