@@ -8,6 +8,7 @@ import StatCard from '@/components/student/StatCard.vue'
 const props = defineProps({
   pending: { type: Number, default: 0 },
   pendingMeetings: { type: Number, default: 0 },
+  pendingReadings: { type: Number, default: 0 },
 })
 const emit = defineEmits(['set-view'])
 
@@ -101,9 +102,24 @@ function fmtSlot(slot) {
               <UiIcon name="chevRight" :size="20" style="color: var(--warn)" />
             </button>
 
+            <!-- pending personal-reading forms -->
+            <button
+              v-if="pendingReadings > 0"
+              class="attn-row"
+              style="background: var(--primary-tint)"
+              @click="emit('set-view', 'readingForms')"
+            >
+              <div class="attn-icon" style="background: var(--primary)"><UiIcon name="note" :size="21" /></div>
+              <div style="flex: 1; text-align: left">
+                <div style="font-weight: 600">{{ pendingReadings }} new reading {{ pendingReadings === 1 ? 'form' : 'forms' }}</div>
+                <div style="font-size: 13px; color: var(--primary-deep)">Review contact details and selected reading type</div>
+              </div>
+              <UiIcon name="chevRight" :size="20" style="color: var(--primary-deep)" />
+            </button>
+
             <!-- all clear -->
             <div
-              v-if="pending === 0 && pendingMeetings === 0"
+              v-if="pending === 0 && pendingMeetings === 0 && pendingReadings === 0"
               style="background: var(--sage-tint); border-radius: 12px; padding: 16px; display: flex; gap: 13px; align-items: center"
             >
               <div class="attn-icon" style="background: var(--sage-deep)"><UiIcon name="check" :size="21" /></div>

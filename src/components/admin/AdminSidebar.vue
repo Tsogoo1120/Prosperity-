@@ -7,6 +7,7 @@ const props = defineProps({
   view: { type: String, required: true },
   pending: { type: Number, default: 0 },
   pendingMeetings: { type: Number, default: 0 },
+  pendingReadings: { type: Number, default: 0 },
   open: { type: Boolean, default: false },
   userName: { type: String, default: 'Admin' },
 })
@@ -16,6 +17,7 @@ const emit = defineEmits(['set-view', 'nav', 'close', 'logout'])
 function badgeFor(id) {
   if (id === 'payments') return props.pending
   if (id === 'schedule') return props.pendingMeetings
+  if (id === 'readingForms') return props.pendingReadings
   return 0
 }
 
@@ -27,6 +29,7 @@ const items = [
   ['videos', 'video', 'Видео'],
   ['tests', 'compass', 'Тестүүд'],
   ['community', 'users', 'Community'],
+  ['readingForms', 'note', 'Reading forms'],
   ['members', 'star', 'Members'],
 ]
 

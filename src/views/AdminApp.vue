@@ -13,6 +13,7 @@ import AdminVideos from '@/components/admin/AdminVideos.vue'
 import AdminTests from '@/components/admin/AdminTests.vue'
 import AdminCommunity from '@/components/admin/AdminCommunity.vue'
 import AdminMembers from '@/components/admin/AdminMembers.vue'
+import AdminReadingForms from '@/components/admin/AdminReadingForms.vue'
 
 const emit = defineEmits(['nav'])
 
@@ -37,6 +38,7 @@ const userName = computed(() => {
 const view = ref('overview')
 const pending = ref(0)
 const pendingMeetings = ref(0)
+const pendingReadings = ref(0)
 const { open: sidebarOpen, toggle: toggleSidebar, close: closeSidebar } = useSidebar()
 
 async function handleLogout() {
@@ -46,12 +48,14 @@ async function handleLogout() {
 
 async function loadPending() {
   try {
-    const [{ count: pay }, { count: slots }] = await Promise.all([
+    const [{ count: pay }, { count: slots }, { count: readings }] = await Promise.all([
       supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('coaching_slots').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('coaching_slots').select('id', { count: 'exact', head: true }).eq('status', 'pending').eq('service_type', 'tarot'),
     ])
     pending.value = pay ?? 0
     pendingMeetings.value = slots ?? 0
+    pendingReadings.value = readings ?? 0
   } catch (e) {
     console.error('[admin] pending counts failed:', e)
   }
@@ -68,6 +72,7 @@ const heads = {
   videos: ['Видео хичээлүүд', 'Хичээл нэмэх, засварлах, нийтлэх.'],
   tests: ['Сэтгэл зүйн тестүүд', 'Тест нэмэх, асуулт засварлах, нийтлэх.'],
   community: ['Community', 'Publish collective readings and moderate member posts.'],
+  readingForms: ['Reading forms', 'View each user\'s phone number, email, and selected reading type.'],
   members: ['Members', 'View subscriber details, manage access, and review meeting orders.'],
 }
 </script>
@@ -79,6 +84,7 @@ const heads = {
       :view="view"
       :pending="pending"
       :pending-meetings="pendingMeetings"
+      :pending-readings="pendingReadings"
       :open="sidebarOpen"
       :user-name="userName"
       @set-view="view = $event"
@@ -92,13 +98,20 @@ const heads = {
         :sub="heads[view]?.[1] ?? ''"
         @menu="toggleSidebar"
       />
-      <AdminOverview v-if="view === 'overview'" :pending="pending" :pending-meetings="pendingMeetings" @set-view="view = $event" />
+      <AdminOverview
+        v-if="view === 'overview'"
+        :pending="pending"
+        :pending-meetings="pendingMeetings"
+        :pending-readings="pendingReadings"
+        @set-view="view = $event"
+      />
       <AdminAnnouncements v-else-if="view === 'announcements'" />
       <AdminSchedule v-else-if="view === 'schedule'" />
       <AdminPayments v-else-if="view === 'payments'" />
       <AdminVideos v-else-if="view === 'videos'" />
       <AdminTests v-else-if="view === 'tests'" />
       <AdminCommunity v-else-if="view === 'community'" />
+      <AdminReadingForms v-else-if="view === 'readingForms'" />
       <AdminMembers v-else-if="view === 'members'" />
     </div>
   </div>
