@@ -11,7 +11,6 @@ const emit = defineEmits(['nav'])
       <div class="flex items-center" style="gap: 26px; font-size: 13.5px; color: rgba(255, 255, 255, 0.6)">
                 <span>Г.Алтанцог миний бие энэ вэбсайт хийсэн болно хаха   ©2026 Union</span><span> </span>
 
-        <a href="#" @click.prevent="emit('nav', 'admin')">Admin portal</a>
       </div>
     </div>
   </footer>

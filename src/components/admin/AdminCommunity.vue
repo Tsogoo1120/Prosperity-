@@ -3,14 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import UiAvatar from '@/components/common/UiAvatar.vue'
-import ReadingManager from '@/components/admin/ReadingManager.vue'
 import { timeAgo } from '@/utils/time.js'
-
-const section = ref('readings')
-const sections = [
-  ['readings', 'Collective reading', 'spark'],
-  ['posts', 'Member posts', 'users'],
-]
 
 const posts = ref([])
 const loading = ref(true)
@@ -64,36 +57,6 @@ async function toggleComment(comment) {
 <template>
   <div class="scroll-y" style="flex: 1; height: calc(100vh - 73px); overflow-y: auto">
     <div class="page-inset-narrow" style="max-width: 800px">
-
-      <!-- Section tabs -->
-      <div class="flex" style="gap: 6px; margin-bottom: 22px; background: var(--surface-2); padding: 5px; border-radius: 12px; max-width: 420px">
-        <button
-          v-for="[id, label, ic] in sections"
-          :key="id"
-          class="flex items-center justify-center"
-          :style="{
-            flex: 1,
-            gap: '7px',
-            padding: '9px 12px',
-            borderRadius: '9px',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: section === id ? 600 : 500,
-            background: section === id ? 'var(--card)' : 'transparent',
-            color: section === id ? 'var(--ink)' : 'var(--ink-soft)',
-            boxShadow: section === id ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
-            transition: 'background .15s, color .15s',
-          }"
-          @click="section = id"
-        >
-          <UiIcon :name="ic" :size="16" /> {{ label }}
-        </button>
-      </div>
-
-      <ReadingManager v-if="section === 'readings'" />
-
-      <template v-else>
       <!-- Stats -->
       <div class="flex flex-wrap" style="gap: 12px; margin-bottom: 24px">
         <div
@@ -198,7 +161,6 @@ async function toggleComment(comment) {
           </template>
         </div>
       </div>
-      </template>
 
     </div>
   </div>

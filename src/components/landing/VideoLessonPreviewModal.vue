@@ -58,7 +58,7 @@ const dur = computed(() => fmtDur(props.lesson?.duration_seconds))
           <div v-if="!canWatch" class="lesson-preview-modal__notice flex items-start">
             <UiIcon name="lock" :size="18" style="flex-shrink: 0; margin-top: 2px; color: var(--clay-deep)" />
             <p style="font-size: 13.5px; line-height: 1.55; color: var(--ink-soft); margin: 0">
-              Видео агуулга зөвхөн бүртгэлтэй гишүүдэд нээгдэнэ. Захиалга авснаар бүх хичээлийг бүрэн үзэх боломжтой.
+              Энэ видео Subscription гишүүдэд нээгдэнэ. Гишүүнчлэл авбал бүх хичээлийг бүрэн үзэж болно.
             </p>
           </div>
 
@@ -67,7 +67,7 @@ const dur = computed(() => fmtDur(props.lesson?.duration_seconds))
               <UiIcon name="play" :size="18" :fill="true" /> Хичээл үзэх
             </button>
             <button v-else type="button" class="btn btn-primary btn-lg" @click="emit('enroll'); emit('close')">
-              <UiIcon name="calendar" :size="18" /> Захиалга авч үзэх
+              <UiIcon name="book" :size="18" /> Subscription авах
             </button>
             <button type="button" class="btn btn-ghost" @click="emit('close')">Хаах</button>
           </div>

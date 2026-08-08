@@ -13,7 +13,7 @@ const availSlots = ref([])
 
 function fmtSlotLabel(s) {
   const d = new Date(s.start_at)
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const date = d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' })
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${date} · ${hh}:${mm}`
@@ -47,13 +47,12 @@ onMounted(async () => {
             id="union-mentor"
             :radius="18"
             :src="tarotImg"
-            placeholder="Drop mentor portrait"
+            placeholder="Тарот уншлагын зураг"
             style="position: absolute; inset: 0; height: 100%"
           />
         </div>
       </div>
       <div class="landing-reveal" style="transition-delay: 0.1s">
-        <div class="kicker sage" style="margin-bottom: 14px">Your mentor</div>
         <h2 style="font-size: clamp(28px, 5vw, 36px); margin-bottom: 8px">{{ m.name }}</h2>
         <div style="color: var(--clay); font-weight: 600; margin-bottom: 20px">{{ m.role }}</div>
         <p style="font-size: 17px; color: var(--ink-soft); line-height: 1.65; max-width: 520px">{{ m.bio }}</p>
@@ -64,7 +63,7 @@ onMounted(async () => {
         </div>
         <!-- Available slots preview -->
         <div style="margin-bottom: 22px">
-          <div class="kicker sage" style="margin-bottom: 10px">Боломжит цагууд</div>
+          <div class="kicker sage" style="margin-bottom: 10px">Ойрын боломжтой цагууд</div>
           <div v-if="availSlots.length" style="display: flex; flex-wrap: wrap; gap: 8px">
             <span
               v-for="s in availSlots"
@@ -78,8 +77,8 @@ onMounted(async () => {
           <p v-else class="muted" style="font-size: 13.5px">Одоогоор нээлттэй цаг байхгүй байна.</p>
         </div>
 
-        <button class="btn btn-blue btn-lg btn-block" @click="emit('book')">
-          <UiIcon name="calendar" :size="18" /> Надтай уулзалтын цаг товлох
+        <button class="btn btn-primary btn-lg btn-block" @click="emit('book')">
+          <UiIcon name="star" :size="18" /> Хувийн уншлага авах
         </button>
       </div>
     </div>

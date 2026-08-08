@@ -17,7 +17,7 @@ const actOk = ref('')
 
 const DURATION_DAYS = 30
 
-const SERVICE_NAMES = { subscription: 'Subscription', reading: 'Хамтын уншлага', tarot: 'Тарот уншлага', coaching: '1:1 Coaching' }
+const SERVICE_NAMES = { subscription: 'Subscription', tarot: 'Тарот уншлага', coaching: '1:1 Coaching' }
 
 const stat = {
   pending: { c: 'warn', t: 'Хүлээгдэж байна' },
@@ -31,7 +31,7 @@ async function loadPayments() {
   loadingList.value = true
   const { data, error } = await supabase
     .from('payments')
-    .select('*, profiles(full_name, email, phone, avatar_url, subscription_status, subscription_expires_at, reading_access_expires_at)')
+    .select('*, profiles(full_name, email, phone, avatar_url, subscription_status, subscription_expires_at)')
     .order('created_at', { ascending: false })
 
   if (!error && data) {
@@ -162,7 +162,7 @@ async function setPaymentStatus(id, status) {
 // uploaded receipt path — that shared path is the join key between the two.
 async function findLinkedSlot(payment) {
   if (!payment.screenshot_path) return null
-  if (payment.service_type === 'subscription' || payment.service_type === 'reading') return null
+  if (payment.service_type === 'subscription') return null
   const { data } = await supabase
     .from('coaching_slots')
     .select('id, status, meet_link')
@@ -204,26 +204,6 @@ async function approvePayment() {
     actError.value = 'Алдаа: ' + payErr.message
     acting.value = false
     return
-  }
-
-  // Collective reading pass: 30 days of reading access only — never touches
-  // subscription state, so the buyer gets no subscriber perks (no discount).
-  if (payment.service_type === 'reading') {
-    const now = new Date()
-    const existing = payment.profiles?.reading_access_expires_at
-      ? new Date(payment.profiles.reading_access_expires_at)
-      : null
-    const base = existing && existing > now ? existing : now
-    const newExpiry = new Date(base.getTime() + DURATION_DAYS * 24 * 60 * 60 * 1000)
-
-    const { error: profErr } = await supabase
-      .from('profiles')
-      .update({ reading_access_expires_at: newExpiry.toISOString() })
-      .eq('id', userId)
-
-    if (profErr) {
-      actError.value = 'Профайл шинэчлэхэд алдаа: ' + profErr.message
-    }
   }
 
   // Subscription is the ONLY product that grants/extends subscription access.
@@ -273,8 +253,6 @@ async function approvePayment() {
       .invoke('send-email', { body: { type: 'payment_approved', userId } })
       .catch(() => {})
     actOk.value = 'Төлбөр батлагдлаа.'
-  } else if (payment.service_type === 'reading') {
-    actOk.value = 'Төлбөр батлагдлаа — Хамтын уншлагын эрх 30 хоногоор нээгдлээ.'
   } else {
     actOk.value = 'Төлбөр батлагдлаа.'
   }
@@ -474,9 +452,7 @@ async function denyPayment() {
               {{
                 sel.service_type === 'subscription'
                   ? 'Дүн болон лавлагааг шалгасны дараа батална уу.'
-                  : sel.service_type === 'reading'
-                    ? 'Батлахад Хамтын уншлагын эрх 30 хоногоор нээгдэнэ.'
-                    : 'Батлахад Google Meet линк үүсч, хэрэглэгчид имэйлээр илгээгдэнэ.'
+                  : 'Батлахад Google Meet линк үүсч, хэрэглэгчид имэйлээр илгээгдэнэ.'
               }}
               <span class="hide-mobile muted" style="font-size: 12px; margin-left: 2px">
                 · <kbd>A</kbd> батлах · <kbd>D</kbd> татгалзах · <kbd>↑↓</kbd> шилжих
@@ -523,9 +499,7 @@ async function denyPayment() {
               sel.status === 'approved'
                 ? (sel.service_type === 'subscription'
                     ? 'Элсэлт батлагдсан — оюутанд мэдэгдэж, нэвтрэх эрх олгогдсон.'
-                    : sel.service_type === 'reading'
-                      ? 'Төлбөр батлагдсан — Хамтын уншлагын эрх нээгдсэн.'
-                      : 'Захиалга батлагдсан — Google Meet линк имэйлээр илгээгдсэн.')
+                    : 'Захиалга батлагдсан — Google Meet линк имэйлээр илгээгдсэн.')
                 : (sel.service_type === 'subscription'
                     ? 'Элсэлт татгалзагдсан — оюутанд дахин илгээхийг хүссэн.'
                     : 'Захиалга татгалзагдсан — хэрэглэгчид имэйлээр мэдэгдсэн.')

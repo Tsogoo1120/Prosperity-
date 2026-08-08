@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { useLandingMotion } from '@/composables/useLandingMotion.js'
+import { scrollToLandingSection, useLandingMotion } from '@/composables/useLandingMotion.js'
 import TopNav from '@/components/landing/TopNav.vue'
 import HeroSection from '@/components/landing/HeroSection.vue'
 import VideoIntroSection from '@/components/landing/VideoIntroSection.vue'
 import VideoLessonsSection from '@/components/landing/VideoLessonsSection.vue'
-import CollectiveReadingSection from '@/components/landing/CollectiveReadingSection.vue'
+import PsychologyTestsSection from '@/components/landing/PsychologyTestsSection.vue'
 import MentorSection from '@/components/landing/MentorSection.vue'
 import ClosingCta from '@/components/landing/ClosingCta.vue'
 import SiteFooter from '@/components/landing/SiteFooter.vue'
@@ -69,6 +69,10 @@ function onLandingResize() {
   updateMobileBarVisibility(landingScrollEl)
 }
 
+function showSubscription() {
+  scrollToLandingSection('intro')
+}
+
 onBeforeUnmount(() => {
   if (scrollRaf) cancelAnimationFrame(scrollRaf)
   landingScrollEl?.removeEventListener('scroll', onLandingScroll)
@@ -94,10 +98,10 @@ onBeforeUnmount(() => {
       @book="booking = true"
       @toggle-theme="emit('toggle-theme')"
     />
-    <HeroSection @nav="emit('nav', $event)" />
+    <HeroSection @book="booking = true" />
     <VideoIntroSection @nav="emit('nav', $event)" />
     <VideoLessonsSection @nav="emit('nav', $event)" />
-    <CollectiveReadingSection @nav="emit('nav', $event)" />
+    <PsychologyTestsSection @nav="emit('nav', $event)" />
     <MentorSection @book="booking = true" />
     <ClosingCta />
     <SiteFooter @nav="emit('nav', $event)" />
@@ -107,10 +111,10 @@ onBeforeUnmount(() => {
       class="landing-mobile-bar show-mobile-only"
       :class="{ 'is-hidden': mobileBarHidden }"
       role="group"
-      aria-label="Quick actions"
+      aria-label="Үйлчилгээний сонголт"
     >
-      <button type="button" class="btn btn-ghost" @click="emit('nav', 'enroll')">Бүртгүүлэх</button>
-      <button type="button" class="btn btn-primary" @click="booking = true">Цаг захиалах</button>
+      <button type="button" class="btn btn-ghost" @click="showSubscription">Subscription</button>
+      <button type="button" class="btn btn-primary" @click="booking = true">Уншлага авах</button>
     </div>
   </div>
 </template>

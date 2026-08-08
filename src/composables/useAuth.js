@@ -13,7 +13,7 @@ async function fetchProfile(userId) {
   }
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, full_name, email, phone, avatar_url, subscription_status, reading_access_expires_at, role, is_admin')
+    .select('id, full_name, email, phone, avatar_url, subscription_status, role, is_admin')
     .eq('id', userId)
     .single()
   if (error) console.error('[auth] profile fetch failed:', error.message)
@@ -43,14 +43,6 @@ function isSubscriber() {
   return profile.value?.subscription_status === 'active'
 }
 
-// Collective reading pass: subscribers watch free; 15,000₮ buyers get a
-// 30-day pass stored in reading_access_expires_at (no other subscriber perks).
-function hasReadingAccess() {
-  if (isSubscriber()) return true
-  const exp = profile.value?.reading_access_expires_at
-  return !!exp && new Date(exp) > new Date()
-}
-
 function isAdmin() {
   if (!session.value) return false
   if (profile.value?.role === 'admin' || profile.value?.is_admin) return true
@@ -77,7 +69,7 @@ async function updateProfile(updates) {
   const { data, error } = await supabase
     .from('profiles')
     .upsert({ id: session.value.user.id, ...updates })
-    .select('id, full_name, email, phone, avatar_url, subscription_status, reading_access_expires_at, role')
+    .select('id, full_name, email, phone, avatar_url, subscription_status, role')
     .single()
   if (error) console.error('[auth] profile update failed:', error.message)
   if (data) profile.value = data
@@ -85,5 +77,5 @@ async function updateProfile(updates) {
 }
 
 export function useAuth() {
-  return { session, profile, loading, init, isAdmin, isSubscriber, hasReadingAccess, signInWithGoogle, signOut, updateProfile }
+  return { session, profile, loading, init, isAdmin, isSubscriber, signInWithGoogle, signOut, updateProfile }
 }

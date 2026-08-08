@@ -11,221 +11,46 @@ import EnrollStepper from '@/components/enroll/EnrollStepper.vue'
 const emit = defineEmits(['nav'])
 const { session, profile, loading, signInWithGoogle, updateProfile } = useAuth()
 
+const subscriptionService = services.find((service) => service.id === 'subscription') ?? services[0]
 const step = ref(0)
-const selectedService = ref(services[0])
-const selectedTarotOption = ref(null)
 
 const form = ref({ name: '', phone: '', email: '' })
 const receiptFile = ref(null)
 
-const bookDate = ref(null)
-const bookSlot = ref(null)
-const bookingFromLanding = ref(false)
-const pendingPrefill = ref(null)
-
 const submitting = ref(false)
 const submitError = ref('')
-const slotTakenNotice = ref('')
-
-const DISCOUNT_RATE = 0.3
 
 const STEP_LABELS = {
-  plan: 'Үйлчилгээ',
-  account: 'Нэвтрэх',
-  booking: 'Цаг сонгох',
+  account: 'Бүртгэл',
   payment: 'Төлбөр',
   review: 'Илгээсэн',
 }
 
-// ── Available slots fetching ──────────────────────────────────────────────────
-const rawSlots = ref([])
-const loadingSlots = ref(false)
-const slotsError = ref(false)
-
-async function loadAvailableSlots() {
-  loadingSlots.value = true
-  slotsError.value = false
-  const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('coaching_slots')
-    .select('id, start_at, end_at, service_type')
-    .eq('status', 'available')
-    .is('user_id', null)
-    .gte('start_at', now)
-    .order('start_at', { ascending: true })
-  if (error) {
-    console.error('[enroll] slots fetch failed:', error.message)
-    slotsError.value = true
-  } else {
-    rawSlots.value = data ?? []
-  }
-  loadingSlots.value = false
-}
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTH_NAMES = ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар']
-
-const dayMap = computed(() => {
-  const map = {}
-  // Slots are typeless now — the user already picked their service, so every
-  // available slot is bookable regardless of which service they chose.
-  for (const s of rawSlots.value) {
-    const iso = s.start_at.slice(0, 10)
-    if (!map[iso]) {
-      const d = new Date(s.start_at)
-      map[iso] = {
-        iso,
-        d: DAY_NAMES[d.getDay()],
-        n: d.getDate(),
-        m: d.getMonth(),
-        y: d.getFullYear(),
-        items: []
-      }
-    }
-    const d = new Date(s.start_at)
-    const hh = String(d.getHours()).padStart(2, '0')
-    const mm = String(d.getMinutes()).padStart(2, '0')
-    map[iso].items.push({ id: s.id, time: `${hh}:${mm}`, raw: s })
-  }
-  return map
-})
-
-const availDays = computed(() => Object.values(dayMap.value))
-
-const currentMonthLabel = computed(() => {
-  if (!availDays.value.length) return ''
-  const first = availDays.value[0]
-  const last = availDays.value[availDays.value.length - 1]
-  return first.m === last.m
-    ? MONTH_NAMES[first.m]
-    : `${MONTH_NAMES[first.m]} – ${MONTH_NAMES[last.m]}`
-})
-
-const currentItems = computed(() => {
-  if (!bookDate.value?.iso) return []
-  return dayMap.value[bookDate.value.iso]?.items ?? []
-})
-
-let realtimeChannel = null
-function subscribeRealtime() {
-  realtimeChannel = supabase
-    .channel('enroll-available-slots')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, loadAvailableSlots)
-    .subscribe()
-}
-
 onUnmounted(() => {
-  if (realtimeChannel) supabase.removeChannel(realtimeChannel)
   clearTimeout(copiedTimer)
 })
 
-const isSubscriber = computed(
-  () => profile.value?.subscription_status === 'active',
-)
 const googleConnected = computed(() => !!session.value)
 
-const stepSequence = computed(() => {
-  // Slot first, login gate second: user commits to a time before Google login,
-  // so they never authenticate just to discover no slot exists.
-  const full = selectedService.value.requiresBooking
-    ? ['plan', 'booking', 'account', 'payment', 'review']
-    : ['plan', 'account', 'payment', 'review']
-  let seq = full
-  // Slot already chosen on the landing page → skip the booking step here.
-  if (bookingFromLanding.value) seq = seq.filter((s) => s !== 'booking')
-  // Signed-in subscriber: the account step has nothing left to do — their
-  // selections and 30% discount carry over, so go straight to payment.
-  if (googleConnected.value && isSubscriber.value) seq = seq.filter((s) => s !== 'account')
-  return seq
-})
-
-const stepLabels = computed(() => stepSequence.value.map((s) => STEP_LABELS[s]))
-const stepType = computed(() => stepSequence.value[step.value] || 'review')
-
-const intentServiceId = computed(() => pendingPrefill.value?.serviceId ?? null)
-
-function serviceRecommendLabel(serviceId) {
-  const intent = intentServiceId.value
-  if (!intent) return null
-  if (serviceId === intent) return 'Санал болгох'
-  // Subscription includes the collective reading for free, so pitch it as
-  // "included" — the discount pitch only makes sense for meeting services.
-  if (intent === 'reading' && serviceId === 'subscription') return 'Үнэгүй багтана'
-  if (intent !== 'subscription' && serviceId === 'subscription') return 'Хөнгөлөлт авах'
-  return null
-}
-
-// 30% subscriber discount applies to booked meetings only — the collective
-// reading is already free for subscribers, never discounted.
-const discountActive = computed(
-  () => isSubscriber.value && selectedService.value.requiresBooking,
-)
-
-// Active subscriber picked the collective reading: nothing to buy, it's
-// already included — steer them into the app instead of the payment flow.
-const readingIncluded = computed(
-  () => isSubscriber.value && selectedService.value.id === 'reading',
-)
-const basePrice = computed(() => selectedService.value.price)
-const finalPrice = computed(() =>
-  discountActive.value ? Math.round(basePrice.value * (1 - DISCOUNT_RATE)) : basePrice.value,
-)
+const stepSequence = ['account', 'payment', 'review']
+const stepLabels = stepSequence.map((stepName) => STEP_LABELS[stepName])
+const stepType = computed(() => stepSequence[step.value] || 'review')
+const finalPrice = computed(() => subscriptionService.price)
 
 const uploaded = computed(() => !!receiptFile.value)
 
 const continueDisabled = computed(() => {
   if (submitting.value) return true
-  if (stepType.value === 'plan') {
-    if (readingIncluded.value) return true
-    return selectedService.value.id === 'tarot' && !selectedTarotOption.value
-  }
   if (stepType.value === 'account')
     return !googleConnected.value
-  if (stepType.value === 'booking') return !bookDate.value || !bookSlot.value
   if (stepType.value === 'payment')
     return !uploaded.value || !form.value.name || !form.value.phone
   return false
 })
 
-const maxStep = computed(() => stepLabels.value.length - 1)
-const rawNext = () => (step.value = Math.min(step.value + 1, maxStep.value))
+const maxStep = stepSequence.length - 1
+const rawNext = () => (step.value = Math.min(step.value + 1, maxStep))
 const back = () => (step.value === 0 ? emit('nav', 'landing') : step.value--)
-
-function selectService(s) {
-  selectedService.value = s
-  selectedTarotOption.value = null
-  if (!bookingFromLanding.value) {
-    bookDate.value = null
-    bookSlot.value = null
-  }
-}
-
-// Skip the reset while we're restoring a saved intent (e.g. after OAuth),
-// otherwise the restored step would be clobbered back to 0.
-let restoringIntent = false
-watch(selectedService, () => {
-  if (restoringIntent) return
-  if (step.value > 0) step.value = 0
-})
-
-// When the sequence changes shape (booking skipped, account dropped for
-// subscribers), keep the user on the SAME step by name — a raw index would
-// silently point at a different step after filtering.
-watch(stepSequence, (seq, oldSeq) => {
-  if (restoringIntent) {
-    if (step.value >= seq.length) step.value = Math.max(0, seq.length - 1)
-    return
-  }
-  const name = oldSeq?.[step.value]
-  let idx = name ? seq.indexOf(name) : -1
-  if (idx < 0 && name && oldSeq) {
-    // Current step vanished (e.g. account removed once subscriber logged in):
-    // move forward to the next step that still exists.
-    const following = oldSeq.slice(oldSeq.indexOf(name) + 1).find((n) => seq.includes(n))
-    if (following) idx = seq.indexOf(following)
-  }
-  step.value = idx >= 0 ? idx : Math.min(step.value, seq.length - 1)
-})
 
 // Pre-fill form from profile when session loads
 watch(
@@ -240,91 +65,19 @@ watch(
   { immediate: true },
 )
 
-function applyBookingPrefill(source) {
-  if (!source?.bookDate || !source?.bookSlot) return
-  const day = availDays.value.find(d => d.iso === source.bookDate.iso)
-  if (day) {
-    bookDate.value = day
-    const slot = day.items.find(s => s.time === (source.bookSlot.time || source.bookSlot))
-    if (slot) {
-      bookSlot.value = slot
-      bookingFromLanding.value = true
-    }
-  }
-}
-
-// Runs whenever the available-slots list changes (initial load + realtime).
-watch(rawSlots, () => {
-  // 1. Restore a slot the user picked on the landing page (slots weren't loaded
-  //    at mount, so retry once they arrive).
-  if (!bookSlot.value && pendingPrefill.value) {
-    applyBookingPrefill(pendingPrefill.value)
-    // Fresh slot list arrived and the saved slot is gone (someone claimed it):
-    // stop retrying and pull the user back to the booking step before payment.
-    if (!bookSlot.value && !loadingSlots.value) {
-      pendingPrefill.value = null
-      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
-      nextTick(() => {
-        const bi = stepSequence.value.indexOf('booking')
-        if (bi >= 0 && step.value > bi) step.value = bi
-      })
-    }
-  }
-  // 2. Auto-select the first available day so the booking step opens on a
-  //    populated time grid instead of an empty "pick a day" state.
-  if (!bookDate.value && !pendingPrefill.value && availDays.value.length) {
-    bookDate.value = availDays.value[0]
-  }
-  // 3. If the slot the user already picked just got claimed by someone else,
-  //    clear it and send them back to choose again — before they pay for it.
-  if (
-    bookSlot.value &&
-    !submitting.value &&
-    (stepType.value === 'booking' || stepType.value === 'payment')
-  ) {
-    const stillOpen = rawSlots.value.some((s) => s.id === bookSlot.value.id)
-    if (!stillOpen) {
-      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
-      bookSlot.value = null
-      bookingFromLanding.value = false // re-reveal the booking step if it was skipped
-      nextTick(() => {
-        const bi = stepSequence.value.indexOf('booking')
-        if (bi >= 0 && step.value > bi) step.value = bi
-      })
-    }
-  }
-})
-
 function applyEnrollIntent() {
   const raw = sessionStorage.getItem('union-enroll-intent')
   if (raw) {
     sessionStorage.removeItem('union-enroll-intent')
     try {
       const intent = JSON.parse(raw)
-      restoringIntent = true
-      const match = services.find((s) => s.id === intent.serviceId)
-      if (match) selectedService.value = match
-      // Restore reading-type (tarot) sub-option so reading vs coaching survives login
-      if (intent.tarotOptionId && match?.tarotOptions) {
-        const opt = match.tarotOptions.find((o) => o.id === intent.tarotOptionId)
-        if (opt) selectedTarotOption.value = opt
-      }
-      if (intent.bookDate && intent.bookSlot) {
-        pendingPrefill.value = intent
-        applyBookingPrefill(intent) // succeeds if rawSlots already loaded, else watcher retries
-      }
       if (intent.stepName) {
-        const idx = stepSequence.value.indexOf(intent.stepName)
-        // Saved step may no longer exist (subscriber skips account) — in that
-        // case jump straight to payment, which is exactly what they came for.
-        step.value = idx >= 0 ? idx : Math.max(0, stepSequence.value.indexOf('payment'))
-      } else if (intent.step !== undefined) {
-        step.value = intent.step
+        const idx = stepSequence.indexOf(intent.stepName)
+        step.value = idx >= 0 ? idx : 0
+      } else if (Number.isInteger(intent.step)) {
+        step.value = Math.min(Math.max(intent.step, 0), maxStep)
       }
-      // Let the selectedService watcher settle without resetting the restored step
-      nextTick(() => { restoringIntent = false })
     } catch {
-      restoringIntent = false
       /* ignore malformed intent */
     }
   }
@@ -341,29 +94,14 @@ watch([loading, session, profile], async () => {
 })
 
 onMounted(() => {
-  loadAvailableSlots()
-  subscribeRealtime()
   applyEnrollIntent()
 })
 
 // ── Auth actions ──────────────────────────────────────────────────────────────
 
 function connectGoogle() {
-  // Save current state so App.vue can restore it after the OAuth redirect.
-  // Include the selected slot + reading type so the user isn't sent back to
-  // re-pick a slot they already chose on the landing page.
-  // Save the step by NAME: after login the sequence may lose steps (booking
-  // skipped, account dropped for subscribers), so a raw index would drift.
-  const intent = { serviceId: selectedService.value.id, stepName: stepType.value }
-  if (bookDate.value && bookSlot.value) {
-    intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso }
-    intent.bookSlot = { id: bookSlot.value.id, time: bookSlot.value.time }
-  } else if (pendingPrefill.value?.bookDate && pendingPrefill.value?.bookSlot) {
-    // Slot chosen on landing but not yet re-applied (slots still loading)
-    intent.bookDate = pendingPrefill.value.bookDate
-    intent.bookSlot = pendingPrefill.value.bookSlot
-  }
-  if (selectedTarotOption.value) intent.tarotOptionId = selectedTarotOption.value.id
+  // Save the current subscription step so App.vue can restore it after OAuth.
+  const intent = { serviceId: subscriptionService.id, stepName: stepType.value }
   sessionStorage.setItem('union-post-oauth', JSON.stringify(intent))
   signInWithGoogle()
 }
@@ -403,35 +141,18 @@ async function submitPayment() {
     return
   }
 
-  // Slot claim + payment insert + subscription flip run atomically server-side:
-  // any failure rolls the whole thing back, so a slot can never be stranded in
-  // 'pending' without a matching payment row.
+  // Payment insert + subscription activation run atomically server-side.
   const { data: paymentId, error: rpcErr } = await supabase.rpc('submit_enrollment', {
     p_screenshot_path: path,
     p_amount: finalPrice.value,
-    p_service_type: selectedService.value.id,
+    p_service_type: subscriptionService.id,
     p_bank_reference: bankReference.value,
-    p_slot_id: bookSlot.value?.id ?? null,
-    p_slot_description: bookSlot.value
-      ? `Enrollment: ${selectedService.value.title}${selectedTarotOption.value ? ' - ' + selectedTarotOption.value.title : ''}`
-      : null,
+    p_slot_id: null,
+    p_slot_description: null,
   })
 
   if (rpcErr) {
     await supabase.storage.from('payment-screenshots').remove([path]).catch(() => {})
-    if (rpcErr.message?.includes('slot_unavailable')) {
-      // Someone claimed the slot between selection and submit: clear it and
-      // send the user back to the booking step to pick again.
-      slotTakenNotice.value = 'Сонгосон цаг саяхан захиалагдсан тул өөр цаг сонгоно уу.'
-      bookSlot.value = null
-      bookingFromLanding.value = false
-      submitting.value = false
-      nextTick(() => {
-        const bi = stepSequence.value.indexOf('booking')
-        if (bi >= 0) step.value = bi
-      })
-      return
-    }
     submitError.value = 'Мэдээлэл хадгалахад алдаа: ' + rpcErr.message
     submitting.value = false
     return
@@ -468,11 +189,7 @@ const bankReference = computed(
 )
 
 const transferRows = computed(() => [
-  { label: 'Банк', value: 'Голомт банк' },
-  { label: 'Дансны нэр', value: 'Гэрэлцэцэг Алтанцог' },
   { label: 'Дансны дугаар', value: '2705130475', copy: true },
-  { label: 'IBAN', value: '37001500', copy: true },
-  { label: 'Гүйлгээний утга', value: bankReference.value, copy: true },
 ])
 
 // Click-to-copy so the user never re-types the account number or reference
@@ -500,15 +217,9 @@ const paymentHint = computed(() => {
 
 const reviewRows = computed(() => {
   const rows = [
-    [
-      'Үйлчилгээ',
-      selectedService.value.title +
-        (selectedTarotOption.value ? ` — ${selectedTarotOption.value.title}` : ''),
-    ],
+    ['Үйлчилгээ', subscriptionService.title],
   ]
-  if (bookDate.value && bookSlot.value)
-    rows.push(['Цаг', `${bookDate.value.d} ${bookDate.value.n}, ${bookSlot.value.time}`])
-  rows.push(['Дүн', fmtMNT(finalPrice.value) + (discountActive.value ? ' (30% хөнгөлөлт)' : '')])
+  rows.push(['Дүн', fmtMNT(finalPrice.value)])
   rows.push(['Төлөв', 'Хүлээгдэж байна'])
   return rows
 })
@@ -517,7 +228,6 @@ function fmtMNT(v) {
   return v.toLocaleString('mn-MN') + ' ₮'
 }
 
-const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
 </script>
 
 <template>
@@ -539,260 +249,12 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
         <EnrollStepper :steps="stepLabels" :active="step" />
       </div>
 
-      <!-- ═══════════════════════ STEP 0 — Plan ═══════════════════════ -->
-      <div v-if="stepType === 'plan'" class="rise enroll-step-content">
-        <h2 class="enroll-step-title">Үйлчилгээгээ сонгоно уу</h2>
-        <div class="enroll-subscriber-row flex items-center">
-          <template v-if="isSubscriber">
-            <span
-              class="chip"
-              style="background: var(--sage-tint); color: var(--sage-deep); font-size: 12px"
-            >
-              30% хөнгөлөлт идэвхтэй
-            </span>
-            <p class="muted" style="font-size: 14px; margin: 0">
-              Уулзалтын үйлчилгээний үнэ танд автоматаар хямдарч тооцогдоно.
-            </p>
-          </template>
-          <p v-else class="muted" style="font-size: 14px; margin: 0">
-            Сарын гишүүнчлэлтэй хэрэглэгчид уулзалтын үйлчилгээг
-            <strong style="color: var(--sage-deep)">30% хөнгөлөлттэй</strong> авдаг.
-          </p>
-        </div>
-
-        <!-- service cards -->
-        <div class="enroll-service-list">
-          <button
-            v-for="s in services"
-            :key="s.id"
-            class="card enroll-service-card"
-            :style="{
-              textAlign: 'left',
-              padding: 0,
-              cursor: 'pointer',
-              border:
-                selectedService.id === s.id
-                  ? `2px solid ${s.hue}`
-                  : '2px solid var(--line)',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              background: 'var(--card)',
-              display: 'block',
-              width: '100%',
-            }"
-            @click="selectService(s)"
-          >
-            <div class="enroll-service-card__main">
-              <!-- icon badge -->
-              <div
-                :style="{
-                  width: '52px',
-                  height: '52px',
-                  borderRadius: '13px',
-                  flex: 'none',
-                  background: `linear-gradient(150deg, ${s.hue}, color-mix(in srgb, ${s.hue} 55%, #16313f))`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                }"
-              >
-                <UiIcon :name="serviceIcons[s.id]" :size="24" />
-              </div>
-
-              <!-- title + subtitle -->
-              <div style="flex: 1; min-width: 0">
-                <div class="flex items-center" style="gap: 10px; flex-wrap: wrap">
-                  <h3 style="font-size: 17px; margin: 0">{{ s.title }}</h3>
-                  <span
-                    v-if="serviceRecommendLabel(s.id)"
-                    class="chip"
-                    :style="{
-                      background: serviceRecommendLabel(s.id) === 'Санал болгох' ? 'var(--clay-tint)' : 'var(--sage-tint)',
-                      color: serviceRecommendLabel(s.id) === 'Санал болгох' ? 'var(--clay-deep)' : 'var(--sage-deep)',
-                      fontSize: '11.5px',
-                    }"
-                  >
-                    {{ serviceRecommendLabel(s.id) }}
-                  </span>
-                  <span
-                    v-else-if="isSubscriber && s.id === 'reading'"
-                    class="chip"
-                    style="background: var(--sage-tint); color: var(--sage-deep); font-size: 11.5px"
-                  >
-                    Гишүүнчлэлд багтсан
-                  </span>
-                  <span
-                    v-else-if="isSubscriber && s.requiresBooking"
-                    class="chip"
-                    style="background: var(--sage-tint); color: var(--sage-deep); font-size: 11.5px"
-                  >
-                    -30% хөнгөлөлт
-                  </span>
-                </div>
-                <p class="muted" style="font-size: 13px; margin: 5px 0 0; line-height: 1.45">
-                  {{ s.subtitle }}
-                </p>
-              </div>
-
-              <!-- price -->
-              <div style="text-align: right; flex: none">
-                <div
-                  v-if="isSubscriber && s.requiresBooking"
-                  class="muted"
-                  style="font-size: 12px; text-decoration: line-through"
-                >
-                  {{ s.priceDisplay }}
-                </div>
-                <div
-                  style="font-family: var(--serif); font-weight: 700; font-size: 20px; color: var(--ink)"
-                >
-                  <span v-if="isSubscriber && s.requiresBooking">
-                    {{ fmtMNT(Math.round(s.price * 0.7)) }}
-                  </span>
-                  <span v-else-if="isSubscriber && s.id === 'reading'" style="color: var(--sage-deep)">
-                    Үнэгүй
-                  </span>
-                  <span v-else>{{ s.priceDisplay }}</span>
-                </div>
-                <div class="muted" style="font-size: 12px">{{ s.period }}</div>
-                <div
-                  v-if="!isSubscriber && s.requiresBooking"
-                  style="font-size: 11.5px; color: var(--sage-deep); margin-top: 2px"
-                >
-                  Гишүүнд {{ fmtMNT(Math.round(s.price * 0.7)) }}
-                </div>
-                <div
-                  v-if="!isSubscriber && s.id === 'reading'"
-                  style="font-size: 11.5px; color: var(--sage-deep); margin-top: 2px"
-                >
-                  Гишүүнд үнэгүй
-                </div>
-              </div>
-
-              <!-- selected check -->
-              <div v-if="selectedService.id === s.id" style="flex: none; color: var(--clay); align-self: flex-start">
-                <UiIcon name="checkCircle" :size="22" fill />
-              </div>
-            </div>
-
-            <!-- features list (subscription + coaching) -->
-            <div
-              v-if="s.features && selectedService.id === s.id"
-              class="enroll-service-features"
-            >
-              <div
-                v-for="f in s.features"
-                :key="f"
-                class="flex items-center"
-                style="gap: 7px; font-size: 13.5px; color: var(--ink-soft)"
-              >
-                <UiIcon name="check" :size="15" style="color: var(--sage-deep); flex: none" />
-                {{ f }}
-              </div>
-            </div>
-
-            <!-- subscriber already owns the collective reading — no purchase -->
-            <div
-              v-if="s.id === 'reading' && selectedService.id === 'reading' && isSubscriber"
-              class="enroll-tarot-panel"
-            >
-              <div
-                class="flex items-center flex-wrap"
-                style="gap: 12px; padding: 12px 14px; background: var(--sage-tint); border-radius: 12px"
-              >
-                <UiIcon name="checkCircle" :size="18" style="color: var(--sage-deep); flex: none" />
-                <span style="flex: 1; min-width: 200px; font-size: 13.5px; color: var(--sage-deep)">
-                  Хамтын уншлага таны гишүүнчлэлд аль хэдийн багтсан — төлбөр төлөх шаардлагагүй.
-                </span>
-                <button class="btn btn-primary btn-sm" @click.stop="emit('nav', 'student')">
-                  Уншлага үзэх <UiIcon name="arrowRight" :size="15" />
-                </button>
-              </div>
-            </div>
-
-            <!-- tarot option picker -->
-            <div
-              v-if="s.id === 'tarot' && selectedService.id === 'tarot'"
-              class="enroll-tarot-panel"
-            >
-              <p
-                class="muted"
-                style="font-size: 13px; font-weight: 600; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.04em"
-              >
-                Уншлагын төрөл сонгоно уу
-              </p>
-              <div style="display: flex; flex-direction: column; gap: 8px">
-                <button
-                  v-for="opt in s.tarotOptions"
-                  :key="opt.id"
-                  class="tarot-opt-btn"
-                  :style="{
-                    textAlign: 'left',
-                    padding: '13px 16px',
-                    borderRadius: '12px',
-                    border:
-                      selectedTarotOption?.id === opt.id
-                        ? '1.5px solid var(--clay)'
-                        : '1.5px solid var(--line)',
-                    background:
-                      selectedTarotOption?.id === opt.id
-                        ? 'var(--clay-tint)'
-                        : 'var(--surface-2)',
-                    cursor: 'pointer',
-                    width: '100%',
-                  }"
-                  @click.stop="selectedTarotOption = opt"
-                >
-                  <div class="flex items-start" style="gap: 10px">
-                    <div style="flex: 1">
-                      <div style="font-weight: 600; font-size: 14px; color: var(--ink)">
-                        {{ opt.title }}
-                      </div>
-                      <div class="muted" style="font-size: 12.5px; margin-top: 3px; line-height: 1.45">
-                        {{ opt.lead }}
-                      </div>
-                      <div
-                        v-if="selectedTarotOption?.id === opt.id"
-                        style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px"
-                      >
-                        <div
-                          v-for="b in opt.bullets"
-                          :key="b"
-                          class="flex items-start"
-                          style="gap: 6px; font-size: 12.5px; color: var(--ink-soft)"
-                        >
-                          <UiIcon name="chevRight" :size="13" style="color: var(--clay); flex: none; margin-top: 1px" />
-                          {{ b }}
-                        </div>
-                      </div>
-                    </div>
-                    <UiIcon
-                      v-if="selectedTarotOption?.id === opt.id"
-                      name="checkCircle"
-                      :size="18"
-                      style="color: var(--clay); flex: none; margin-top: 1px"
-                    />
-                  </div>
-                </button>
-              </div>
-              <p
-                v-if="!selectedTarotOption"
-                class="muted"
-                style="font-size: 12.5px; margin: 10px 0 0; display: flex; align-items: center; gap: 5px"
-              >
-                <UiIcon name="chevDown" :size="14" /> Уншлагын төрлөө сонгосны дараа үргэлжлүүлнэ
-              </p>
-            </div>
-          </button>
-        </div>
-      </div>
-
       <!-- ═══════════════════════ STEP 1 — Account ═══════════════════════ -->
-      <div v-else-if="stepType === 'account'" class="rise enroll-step-content enroll-step-content--narrow">
-        <h2 class="enroll-step-title">Бүртгэл үүсгэх</h2>
+      <div v-if="stepType === 'account'" class="rise enroll-step-content enroll-step-content--narrow">
+        <div class="kicker cool" style="margin-bottom: 12px">Онлайн хичээл</div>
+        <h2 class="enroll-step-title">Шинээр хэргэлэгч болох</h2>
         <p class="enroll-step-lead muted">
-          Үргэлжлүүлэхийн тулд Google-ээр нэвтэрнэ үү. Таны явц хадгалагдана.
+          Видео хичээлээ үзэхийн тулд Gmail хаягаараа нэвтэрч ороорой
         </p>
 
         <!-- Google connect -->
@@ -820,7 +282,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
-          <span v-if="!googleConnected">Google-ээр холбох</span>
+          <span v-if="!googleConnected">Google хаягаараа үргэлжлүүлэх</span>
           <span v-else>Google холбогдсон · {{ session?.user?.email }}</span>
           <UiIcon v-if="googleConnected" name="check" :size="16" style="margin-left: 4px" />
         </button>
@@ -831,131 +293,30 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
           style="gap: 7px; margin-bottom: 14px; font-size: 13px; color: var(--good); background: var(--good-tint); border-radius: 10px; padding: 10px 14px"
         >
           <UiIcon name="checkCircle" :size="15" style="color: var(--good); flex: none; margin-top: 1px" />
-          Google холбогдлоо. Үргэлжлүүлээд нэр, утас, төлбөрийн мэдээллээ оруулна уу.
+          Google хаяг холбогдлоо. Одоо төлбөрийн баримтаа оруулахад л болно.
         </div>
       </div>
 
-      <!-- ═══════════════════════ STEP 2 — Booking ═══════════════════════ -->
-      <div v-else-if="stepType === 'booking'" class="rise enroll-step-content enroll-step-content--booking">
-        <h2 class="enroll-step-title">Цаг захиалах</h2>
-        <p class="enroll-step-lead muted">
-          {{ selectedService.id === 'tarot' ? '30 минут · Онлайн уулзалт' : '1 цаг · Онлайн уулзалт' }}
-        </p>
-        <div class="card card-pad" style="border-radius: 16px">
-          <p
-            v-if="slotTakenNotice"
-            class="flex items-center"
-            style="gap: 8px; margin: 0 0 16px; padding: 10px 14px; background: var(--bad-tint); border-radius: 10px; font-size: 13.5px; color: var(--bad)"
-          >
-            <UiIcon name="x" :size="15" style="flex: none" /> {{ slotTakenNotice }}
-          </p>
-          <div class="kicker cool" style="margin-bottom: 14px">{{ currentMonthLabel || 'Ажиллах өдрүүд' }}</div>
-          <div v-if="availDays.length" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 26px">
-            <button
-              v-for="day in availDays"
-              :key="day.iso"
-              type="button"
-              class="daycell"
-              :style="{
-                borderColor: bookDate?.iso === day.iso ? 'var(--primary)' : 'var(--line)',
-                background: bookDate?.iso === day.iso ? 'var(--primary-tint)' : 'var(--card)',
-                color: bookDate?.iso === day.iso ? 'var(--primary-deep)' : 'var(--ink)',
-              }"
-              @click="bookDate = day; bookSlot = null"
-            >
-              <span style="font-size: 12px; font-weight: 600; opacity: 0.7">{{ day.d }}</span>
-              <span style="font-size: 21px; font-family: var(--serif); font-weight: 600">{{ day.n }}</span>
-            </button>
-          </div>
-          <div
-            v-else-if="slotsError"
-            class="flex items-center"
-            style="gap: 10px; margin-bottom: 26px; padding: 10px 14px; background: var(--bad-tint); border-radius: 10px; font-size: 13.5px; color: var(--bad)"
-          >
-            <span>Цагийн мэдээлэл ачаалагдсангүй.</span>
-            <button type="button" class="btn btn-ghost btn-sm" @click="loadAvailableSlots">
-              Дахин оролдох
-            </button>
-          </div>
-          <p v-else-if="!loadingSlots" class="muted" style="font-size: 14px; margin-bottom: 26px">Одоогоор боломжит цаг байхгүй байна.</p>
-          <p v-else class="muted" style="font-size: 14px; margin-bottom: 26px">Уншиж байна...</p>
-
-          <div class="kicker cool" style="margin-bottom: 14px">Боломжтой цагууд</div>
-          <div v-if="currentItems.length" class="slot-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px">
-            <button
-              v-for="s in currentItems"
-              :key="s.id"
-              class="slotcell"
-              :style="{
-                borderColor: bookSlot?.id === s.id ? 'var(--clay)' : 'var(--line)',
-                background: bookSlot?.id === s.id ? 'var(--clay)' : 'var(--card)',
-                color: bookSlot?.id === s.id ? '#fff' : 'var(--ink)',
-              }"
-              @click="bookSlot = s; slotTakenNotice = ''"
-            >
-              {{ s.time }}
-            </button>
-          </div>
-          <p v-else-if="bookDate" class="muted" style="font-size: 14px">Энэ өдөрт боломжит цаг байхгүй байна.</p>
-          <p v-else class="muted" style="font-size: 14px">Өдөр сонгоно уу.</p>
-
-          <div
-            v-if="bookDate && bookSlot"
-            class="flex items-center"
-            style="gap: 8px; margin-top: 16px; padding: 12px 14px; background: var(--good-tint); border-radius: 10px; font-size: 14px; color: var(--good)"
-          >
-            <UiIcon name="checkCircle" :size="17" />
-            {{ bookDate.d }} {{ bookDate.n }}-нд {{ bookSlot.time }} цаг сонгогдлоо
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════════════ STEP 3 — Payment ═══════════════════════ -->
+      <!-- ═══════════════════════ STEP 2 — Payment ═══════════════════════ -->
       <div v-else-if="stepType === 'payment'" class="rise grid-split-enroll-pay enroll-step-content enroll-step-content--payment">
         <div>
-          <!-- chosen-slot recap so the user confirms the meeting before paying -->
-          <div
-            v-if="bookDate && bookSlot"
-            class="flex items-center"
-            style="gap: 10px; padding: 12px 14px; background: var(--primary-tint); border-radius: 12px; margin-bottom: 18px; font-size: 14px; color: var(--primary-deep)"
-          >
-            <UiIcon name="calendar" :size="16" style="flex: none" />
-            <span style="font-weight: 600">{{ selectedService.title }} · {{ bookDate.d }} {{ bookDate.n }} · {{ bookSlot.time }}</span>
-          </div>
-          <h2 class="enroll-step-title">Төлбөр төлөх</h2>
+          <div class="kicker cool" style="margin-bottom: 12px">Subscription үйлчилгээ</div>
+          <h2 class="enroll-step-title">Гишүүнчлэлийн төлбөр</h2>
           <div class="enroll-pay-steps">
             <div class="enroll-pay-step">
               <span class="enroll-pay-step__num">1</span>
-              Доорх данс руу <strong>{{ fmtMNT(finalPrice) }}</strong> шилжүүлнэ
+              Доорх данс руу <strong>{{ fmtMNT(finalPrice) }}</strong> шилжүүлээрэй
             </div>
             <div class="enroll-pay-step">
               <span class="enroll-pay-step__num">2</span>
-              Гүйлгээний утга дээр <strong>{{ bankReference }}</strong> гэж бичнэ
-            </div>
-            <div class="enroll-pay-step">
-              <span class="enroll-pay-step__num">3</span>
-              Баримтын зургаа хавсаргаад илгээнэ
-            </div>
-          </div>
-
-          <!-- discount banner -->
-          <div
-            v-if="discountActive"
-            class="flex items-center"
-            style="gap: 10px; margin-bottom: 16px; padding: 12px 16px; background: var(--sage-tint); border-radius: 12px; color: var(--sage-deep)"
-          >
-            <UiIcon name="award" :size="18" style="flex: none" />
-            <div style="font-size: 13.5px">
-              <strong>Гишүүний хөнгөлөлт идэвхтэй.</strong>
-              {{ fmtMNT(basePrice) }} → <strong>{{ fmtMNT(finalPrice) }}</strong>
-              <span style="font-size: 12px"> (30% хямдарсан)</span>
+              Баримтын зургаа оруулаад илгээнэ
             </div>
           </div>
 
           <div class="card card-pad" style="border-radius: 16px">
             <div class="flex items-center" style="gap: 10px; margin-bottom: 16px">
               <UiIcon name="bank" :size="20" style="color: var(--primary)" />
-              <span style="font-weight: 600">Шилжүүлгийн мэдээлэл</span>
+              <span style="font-weight: 600">Төлбөр хийх данс</span>
             </div>
             <div
               v-for="row in transferRows"
@@ -982,13 +343,6 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
             <div class="flex items-center justify-between" style="padding: 16px 0 4px">
               <span style="font-weight: 600">Нийт дүн</span>
               <div style="text-align: right">
-                <div
-                  v-if="discountActive"
-                  class="muted"
-                  style="font-size: 12.5px; text-decoration: line-through"
-                >
-                  {{ fmtMNT(basePrice) }}
-                </div>
                 <span class="flex items-center" style="gap: 8px; justify-content: flex-end">
                   <span style="font-family: var(--serif); font-weight: 700; font-size: 26px; color: var(--clay-deep)">
                     {{ fmtMNT(finalPrice) }}
@@ -1009,7 +363,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
           </div>
           <div class="flex items-start" style="gap: 8px; margin-top: 14px; font-size: 13px; color: var(--muted)">
             <UiIcon name="shield" :size="16" style="color: var(--sage-deep); margin-top: 1px" />
-            <span>Баримт хавсарсны дараа элсэлт баталгааждаг — хуудсан дээр хүлээх шаардлагагүй.</span>
+            <span>Баримтаа илгээсний дараа энд хүлээх шаардлагагүй. Шалгаад гишүүнчлэлийг тань нээнэ.</span>
           </div>
         </div>
 
@@ -1018,7 +372,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
           <div class="card card-pad" style="border-radius: 16px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px">
             <div class="flex items-center" style="gap: 10px">
               <UiIcon name="user" :size="18" style="color: var(--primary)" />
-              <span style="font-weight: 600">Холбоо барих мэдээлэл</span>
+              <span style="font-weight: 600">Таны мэдээлэл</span>
             </div>
             <div class="field">
               <label>Нэр <span style="color: var(--clay)">*</span></label>
@@ -1037,12 +391,12 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
           <label
             style="font-size: 13px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 10px"
           >
-            Баримтын зураг хавсаргах <span style="color: var(--clay)">*</span>
+            Төлбөрийн баримт <span style="color: var(--clay)">*</span>
           </label>
           <ImageSlot
             id="union-receipt"
             :radius="14"
-            placeholder="Шилжүүлгийн баримтыг дуслах — эсвэл дарж нээнэ"
+            placeholder="Баримтын зургаа энд оруулаарай"
             style="width: 100%; height: min(360px, 50vh)"
             @change="receiptFile = $event"
           />
@@ -1056,7 +410,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
             }"
           >
             <UiIcon :name="uploaded ? 'checkCircle' : 'upload'" :size="16" />
-            {{ uploaded ? 'Баримт хавсарсан — илгээхэд бэлэн.' : 'PNG эсвэл JPG баримт.' }}
+            {{ uploaded ? 'Баримт хавсаргалаа.' : 'Зургаа чирж оруулах эсвэл дарж сонгоорой.' }}
           </div>
 
           <!-- submit error -->
@@ -1071,7 +425,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
         </div>
       </div>
 
-      <!-- ═══════════════════════ STEP 4 — Review ═══════════════════════ -->
+      <!-- ═══════════════════════ STEP 3 — Review ═══════════════════════ -->
       <div v-else-if="stepType === 'review'" class="rise enroll-review">
         <div
           class="pop"
@@ -1089,10 +443,9 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
         >
           <UiIcon name="clock" :size="36" />
         </div>
-        <h2 style="font-size: 30px; margin-bottom: 10px">Бүртгэл илгээгдлээ</h2>
+        <h2 style="font-size: 30px; margin-bottom: 10px">Баримт илгээгдлээ</h2>
         <p class="muted" style="max-width: 420px; margin: 0 auto 28px; font-size: 16px; line-height: 1.6">
-          <strong style="color: var(--ink)">{{ selectedService.title }}</strong> үйлчилгээний
-          төлбөрийн баримтыг хүлээн авлаа. Манай баг 24 цагийн дотор шалгаж батлана.
+          Одоо өөр хийх зүйлгүй. Төлбөрийг шалгаад Subscription эрхийг тань идэвхжүүлнэ.
         </p>
         <div
           class="card card-pad"
@@ -1126,7 +479,6 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
         class="flex items-center justify-between enroll-footer-nav"
         :class="{
           'enroll-footer-nav--narrow': stepType === 'account',
-          'enroll-footer-nav--booking': stepType === 'booking',
         }"
       >
         <button class="btn btn-ghost" @click="back">
@@ -1140,7 +492,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
             {{ paymentHint }}
           </span>
           <span v-else-if="stepType === 'payment'" class="muted" style="font-size: 13.5px; align-self: center">
-            {{ fmtMNT(finalPrice) }} · {{ selectedService.title }}
+            {{ fmtMNT(finalPrice) }} · {{ subscriptionService.title }}
           </span>
           <button
             class="btn btn-primary btn-lg"
@@ -1148,7 +500,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
             @click="handleContinue"
           >
             <UiIcon v-if="submitting" name="clock" :size="17" style="animation: spin 1s linear infinite" />
-            {{ stepType === 'payment' ? (submitting ? 'Илгээж байна…' : 'Баримт илгээх') : 'Үргэлжлүүлэх' }}
+            {{ stepType === 'payment' ? (submitting ? 'Илгээж байна…' : 'Баримтаа илгээх') : 'Үргэлжлүүлэх' }}
             <UiIcon v-if="!submitting" name="arrowRight" :size="18" />
           </button>
         </div>
@@ -1198,43 +550,8 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
   line-height: 1.55;
 }
 
-.enroll-subscriber-row {
-  gap: 10px;
-  margin-bottom: 22px;
-  flex-wrap: wrap;
-}
-
-.enroll-service-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.enroll-service-card__main {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px;
-}
-
-.enroll-service-features {
-  padding: 0 16px 14px 66px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.enroll-tarot-panel {
-  border-top: 1px solid var(--line-soft);
-  padding: 14px 16px 16px;
-}
-
 .enroll-step-content--narrow {
   max-width: 540px;
-}
-
-.enroll-step-content--booking {
-  max-width: 580px;
 }
 
 .enroll-review {
@@ -1248,10 +565,6 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
 
 .enroll-footer-nav--narrow {
   max-width: 540px;
-}
-
-.enroll-footer-nav--booking {
-  max-width: 580px;
 }
 
 @media (min-width: 768px) {
@@ -1272,27 +585,6 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
   .enroll-step-lead {
     margin-bottom: 26px;
     font-size: 15.5px;
-  }
-
-  .enroll-subscriber-row {
-    margin-bottom: 26px;
-  }
-
-  .enroll-service-list {
-    gap: 14px;
-  }
-
-  .enroll-service-card__main {
-    gap: 16px;
-    padding: 20px 22px;
-  }
-
-  .enroll-service-features {
-    padding: 0 22px 18px 90px;
-  }
-
-  .enroll-tarot-panel {
-    padding: 18px 22px;
   }
 
   .enroll-review {
@@ -1321,12 +613,6 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
 }
 
 @media (max-width: 767px) {
-  .enroll-subscriber-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
   .enroll-step-lead {
     margin-bottom: 18px;
   }
@@ -1387,50 +673,7 @@ const serviceIcons = { subscription: 'book', reading: 'spark', tarot: 'star' }
   color: var(--good);
 }
 
-.enroll-service-card {
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.enroll-service-card:hover {
-  box-shadow: var(--sh-md);
-}
-.tarot-opt-btn {
-  transition: border-color 0.15s, background 0.15s;
-}
-.tarot-opt-btn:hover {
-  border-color: var(--clay) !important;
-}
-.daycell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 10px 0;
-  border: 1.5px solid;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.daycell:not(:disabled):hover {
-  border-color: var(--primary);
-}
-.slotcell {
-  padding: 12px 0;
-  border: 1.5px solid;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 14.5px;
-  transition: all 0.15s;
-}
-.slotcell:hover {
-  border-color: var(--clay);
-}
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-@media (max-width: 767px) {
-  .slot-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
 }
 </style>

@@ -8,10 +8,10 @@ import CalmField from '@/components/common/CalmField.vue'
     <CalmField intense :style-override="{ opacity: 0.75 }" />
     <div class="mx-auto max-w-wrap landing-reveal closing-cta__inner" style="position: relative; text-align: center">
       <h2 style="color: #fff; font-size: clamp(32px, 4vw, 48px); max-width: 1400px; margin: 0 auto 18px">
-       After Tuesday the calendar goes W T F
+        Асуух зүйл байна уу?
       </h2>
       <p style="color: rgba(255, 255, 255, 0.75); font-size: 18px; max-width: 520px; margin: 0 auto 32px">
-        Асуух юм байвал миний хувийн хаяг луу шууд чат бичээрэй окэ
+        Миний Instagram хаяг руу шууд бичээрэй. Боломжтой үедээ хариулаад өгнө өө.
       </p>
       <div class="btn-row-center btn-row--stack-mobile">
         <a
@@ -20,10 +20,10 @@ import CalmField from '@/components/common/CalmField.vue'
           rel="noopener noreferrer"
           class="btn btn-lg"
           style="background: rgba(255, 255, 255, 0.12); color: #fff"
-          aria-label="Follow on Instagram (@tsogoo_1120)"
+          aria-label="Instagram-аар @tsogoo_1120 руу бичих"
         >
           <UiIcon name="instagram" :size="19" />
-          Instagram хаягаар холбогдох
+          @tsogoo_1120 руу бичих
         </a>
       </div>
     </div>

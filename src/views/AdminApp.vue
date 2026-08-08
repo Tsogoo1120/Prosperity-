@@ -71,7 +71,7 @@ const heads = {
   payments: ['Payments', 'Verify receipts and approve enrollments.'],
   videos: ['Видео хичээлүүд', 'Хичээл нэмэх, засварлах, нийтлэх.'],
   tests: ['Сэтгэл зүйн тестүүд', 'Тест нэмэх, асуулт засварлах, нийтлэх.'],
-  community: ['Community', 'Publish collective readings and moderate member posts.'],
+  community: ['Community', 'Moderate member posts.'],
   readingForms: ['Reading forms', 'View each user\'s phone number, email, and selected reading type.'],
   members: ['Members', 'View subscriber details, manage access, and review meeting orders.'],
 }

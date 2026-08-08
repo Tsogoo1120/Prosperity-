@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase.js'
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_NAMES = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя']
 
 export function useAvailableSlots() {
   const rawSlots = ref([])

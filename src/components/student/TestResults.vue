@@ -118,7 +118,13 @@ const barColor = (ratio) => ratio >= 0.7 ? 'var(--sage-deep)' : ratio >= 0.5 ? '
           >
             <span style="font-weight: 500; font-size: 14.5px">
               {{ test.scoring_rules?.categories?.[key]?.title ?? key }}
-              <span v-if="winnerInfo?.key === key" style="margin-left: 6px; font-size: 12px; color: var(--clay)">✓ Тэнцүүлэгч</span>
+              <span
+                v-if="winnerInfo?.key === key"
+                class="inline-flex items-center"
+                style="gap: 4px; margin-left: 6px; font-size: 12px; color: var(--clay)"
+              >
+                <UiIcon name="check" :size="12" /> Тэнцүүлэгч
+              </span>
             </span>
             <span style="font-weight: 700; font-size: 16px">{{ count }}</span>
           </div>

@@ -7,10 +7,12 @@ import { reactive, watch } from 'vue'
  * reads through the Tailwind token mapping).
  */
 const ACCENTS = {
-  Clay: { c: '#bd7350', d: '#a35e3d', t: '#f5e6dc', tDark: '#3a2a20' },
+  // Keep the legacy key so existing saved preferences receive the refreshed
+  // palette without requiring a localStorage migration.
+  Clay: { c: '#4f7fa8', d: '#376589', t: '#e5eef6', tDark: '#21394c' },
   Blue: { c: '#4a6d8c', d: '#36546e', t: '#e4edf3', tDark: '#243a48' },
   Sage: { c: '#5f8a73', d: '#4a6f5b', t: '#e3efe7', tDark: '#233530' },
-  Plum: { c: '#8a6a86', d: '#6f5270', t: '#efe5ef', tDark: '#352a35' },
+  Plum: { c: '#577d9b', d: '#3f617c', t: '#e6eef4', tDark: '#243846' },
 }
 
 const HEAD_FONTS = {

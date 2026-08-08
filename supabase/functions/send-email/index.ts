@@ -8,7 +8,6 @@ import {
   paymentDeniedTemplate,
   paymentReceivedTemplate,
   psychologyTestTemplate,
-  tarotReadingTemplate,
   videoLessonTemplate,
   welcomeTemplate,
 } from '../_shared/templates.ts'
@@ -282,15 +281,6 @@ Deno.serve(async (req) => {
         if (denied) return denied
         await broadcastContent(admin, 'psychology_tests', contentId, (title) =>
           psychologyTestTemplate({ siteUrl: SITE_URL, itemTitle: title }))
-        break
-      }
-
-      case 'content_reading': {
-        const { contentId } = body as { contentId: string }
-        const denied = await requireAdmin(admin, user.id)
-        if (denied) return denied
-        await broadcastContent(admin, 'collective_readings', contentId, (title) =>
-          tarotReadingTemplate({ siteUrl: SITE_URL, itemTitle: title }))
         break
       }
 

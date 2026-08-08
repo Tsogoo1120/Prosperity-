@@ -1,11 +1,15 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useTests } from '@/composables/useTests.js'
 import AssessmentList from './AssessmentList.vue'
 import TestRunner from './TestRunner.vue'
 import TestResults from './TestResults.vue'
 
 const { tests, myResults, loading, error, fetchTests, fetchMyResults, submitTest } = useTests()
+
+const props = defineProps({
+  initialTestId: { type: String, default: null },
+})
 
 const mode = ref('list')   // 'list' | 'test' | 'results'
 const activeTest = ref(null)
@@ -39,6 +43,19 @@ function viewResult(test) {
   lastResult.value = { scoreData: stored.score, summary: stored.result_summary }
   mode.value = 'results'
 }
+
+let autoStartedTestId = null
+watch(
+  [tests, () => props.initialTestId],
+  ([availableTests, initialTestId]) => {
+    if (!initialTestId || autoStartedTestId === initialTestId) return
+    const requestedTest = availableTests.find((test) => test.id === initialTestId)
+    if (!requestedTest) return
+    autoStartedTestId = initialTestId
+    start(requestedTest)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

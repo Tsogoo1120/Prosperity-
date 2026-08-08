@@ -360,7 +360,7 @@ export function coachingApprovedTemplate(opts: {
   const calBlock = `<p style="margin:0 0 16px;">
        <a href="${calHref}"
           style="color:#5c564d;font-size:14px;text-decoration:underline;">
-         📅 Google Calendar-т нэмэх
+         Google Calendar-т нэмэх
        </a>
      </p>`
 
@@ -471,18 +471,6 @@ export function psychologyTestTemplate(opts: { siteUrl: string; itemTitle?: stri
     heading: 'Сэтгэл зүйн шинэ тест орлоо',
     announce: 'Сэтгэл зүйн шинэ тест нэмэгдлээ.',
     instruction: 'Та бүртгэл рүүгээ нэвтэрч ороод тестээ бөглөөрэй.',
-    itemTitle: opts.itemTitle ?? null,
-    ctaLabel: 'Нэвтрэх',
-    ctaHref: opts.siteUrl,
-  })
-}
-
-export function tarotReadingTemplate(opts: { siteUrl: string; itemTitle?: string | null }): EmailTemplate {
-  return contentNotification({
-    subject: 'Шинэ нийтийн тарот уншлага орлоо',
-    heading: 'Шинэ нийтийн тарот уншлага орлоо',
-    announce: 'Шинэ нийтийн тарот уншлага нийтлэгдлээ.',
-    instruction: 'Та бүртгэл рүүгээ нэвтэрч орж үзээрэй.',
     itemTitle: opts.itemTitle ?? null,
     ctaLabel: 'Нэвтрэх',
     ctaHref: opts.siteUrl,

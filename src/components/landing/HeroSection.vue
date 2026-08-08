@@ -1,90 +1,18 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { formatBookingSummary } from "@/data/booking-calendar.js";
-import { supabase } from "@/lib/supabase.js";
-import { useAvailableSlots } from "@/composables/useAvailableSlots.js";
+import { scrollToLandingSection } from '@/composables/useLandingMotion.js'
+import { services } from '@/data/union.js'
+import UiIcon from '@/components/common/UiIcon.vue'
+import CalmField from '@/components/common/CalmField.vue'
+import ImageSlot from '@/components/common/ImageSlot.vue'
+import profileImg from '../../../imgs.video/profile.jpg'
 
-import UiIcon from "@/components/common/UiIcon.vue";
+const emit = defineEmits(['book'])
 
-import UiRing from "@/components/common/UiRing.vue";
+const tarotService = services.find((service) => service.id === 'tarot')
+const subscriptionService = services.find((service) => service.id === 'subscription')
 
-import CalmField from "@/components/common/CalmField.vue";
-
-import ImageSlot from "@/components/common/ImageSlot.vue";
-
-import profileImg from "../../../imgs.video/profile.jpg";
-
-const emit = defineEmits(["nav"]);
-
-const bookDate = ref(null);
-const bookSlot = ref(null);
-const pickerOpen = ref(false);
-const navigating = ref(false);
-
-const { rawSlots, dayMap, availDays, loadAvailableSlots } = useAvailableSlots();
-
-const currentSlots = computed(() => {
-  if (!bookDate.value?.iso) return [];
-  return dayMap.value[bookDate.value.iso]?.items ?? [];
-});
-
-watch(availDays, (days) => {
-  if (days.length && !bookDate.value) bookDate.value = days[0];
-});
-
-let realtimeChannel = null;
-
-onMounted(() => {
-  loadAvailableSlots();
-  realtimeChannel = supabase
-    .channel('hero-available-slots')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_slots' }, loadAvailableSlots)
-    .subscribe();
-});
-
-onUnmounted(() => {
-  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
-});
-
-const bookingSummary = computed(() =>
-  formatBookingSummary(bookDate.value, bookSlot.value?.time ?? bookSlot.value),
-);
-
-const hasBooking = computed(
-  () => Boolean(bookDate.value && bookSlot.value),
-);
-
-function openPicker() {
-  pickerOpen.value = true;
-}
-
-function closePicker() {
-  pickerOpen.value = false;
-}
-
-function confirmPicker() {
-  if (!hasBooking.value) return;
-  closePicker();
-}
-
-function goEnrollPayment() {
-  // Landing booking is the personal reading (tarot); slots are typeless now.
-  const intent = { serviceId: 'tarot' };
-  if (bookDate.value && bookSlot.value) {
-    intent.bookDate = { d: bookDate.value.d, n: bookDate.value.n, iso: bookDate.value.iso };
-    intent.bookSlot = bookSlot.value;
-  }
-  sessionStorage.setItem("union-enroll-intent", JSON.stringify(intent));
-  emit("nav", "enroll");
-}
-
-function onPrimaryClick() {
-  if (!hasBooking.value) {
-    openPicker();
-    return;
-  }
-  navigating.value = true;
-  goEnrollPayment();
+function showSubscription() {
+  scrollToLandingSection('intro')
 }
 </script>
 
@@ -95,144 +23,59 @@ function onPrimaryClick() {
     <div class="mx-auto max-w-wrap grid-hero-landing hero-grid">
       <div class="hero-copy">
         <h1 class="hero-title rise d1">
-          Existence precedes<br />
-
-          <em>essence</em>
+          Your fav sacrastic <br />
+          <em>tarot reader</em>
         </h1>
 
         <p class="hero-lead rise d2">
-          Энэ нь чи хэн байх нь чухал биш харин цаашид өөрийн сонголтоор хэн
-          болох нь чухал гэсэн санааг илэрхийлдэг.
+         Чиний амьдралд яг юу болоод байгаа юмбээ хамаёо. gwenchana?
         </p>
 
+        <div class="hero-facts rise d3" aria-label="Уншлагын мэдээлэл">
+          <span><UiIcon name="clock" :size="16" /> 30 минут</span>
+          <span><UiIcon name="video" :size="16" /> video call</span>
+        </div>
+
         <div class="hero-actions rise d3 btn-row btn-row--stack-mobile">
-          <button class="btn btn-primary btn-lg" :disabled="navigating" @click="onPrimaryClick">
-            <UiIcon v-if="navigating" name="clock" :size="19" style="animation: spin 1s linear infinite" />
-            <UiIcon v-else name="calendar" :size="19" />
-            {{ navigating ? 'Уншиж байна…' : hasBooking ? 'Бүртгэлд үргэлжлэх' : 'Хувийн уншлага цаг захиалах' }}
+          <button class="btn btn-primary btn-lg" @click="emit('book')">
+            Тарот уншлага авах
           </button>
-
-          <button class="btn btn-ghost btn-lg" @click="emit('nav', 'enroll')">
-            Subscription авах <UiIcon name="arrowRight" :size="18" />
+          <button class="btn btn-ghost btn-lg" @click="showSubscription">
+            Subscription үзэх <UiIcon name="chevDown" :size="18" />
           </button>
         </div>
 
-        <div class="hero-metrics rise d4" role="list">
-          <div
-            v-for="[n, l] in metrics"
-            :key="l"
-            class="hero-metric"
-            role="listitem"
-          >
-            <div class="hero-metric__value">{{ n }}</div>
 
-            <div class="hero-metric__label muted">{{ l }}</div>
-          </div>
-        </div>
       </div>
 
       <div class="pop d2 hero-visual">
         <div class="hero-visual__frame">
           <div class="hero-visual__gradient" />
-
           <ImageSlot
             id="union-hero"
             :src="profileImg"
             :radius="20"
-            placeholder="Drop a calm portrait / nature image"
+            placeholder="Зураг"
             class="hero-visual__img"
           />
         </div>
 
-
-
-        <div class="card rise d7 hero-float-card hero-float-card--progress">
-          <div class="flex items-center" style="gap: 13px">
-            <UiRing :value="0.42" :size="50" :stroke="5" />
-
-            <div>
-              <div style="font-weight: 600; font-size: 14px">
-                Онлайн хичээлүүд
-              </div>
-
-              <div class="muted" style="font-size: 12.5px">6 of 14 lessons</div>
-            </div>
-          </div>
-        </div>
+        <button
+          type="button"
+          class="card rise d7 hero-float-card hero-float-card--subscription"
+          @click="showSubscription"
+        >
+          <span class="hero-float-card__icon hero-float-card__icon--blue">
+            <UiIcon name="book" :size="19" />
+          </span>
+          <span>
+            <strong>Subscription</strong>
+            <small> онлайн хичээл· {{ subscriptionService?.priceDisplay }}</small>
+          </span>
+          <UiIcon name="arrowRight" :size="16" />
+        </button>
       </div>
     </div>
-
-    <Teleport to="body">
-      <div
-        v-if="pickerOpen"
-        class="hero-picker-scrim"
-        @click="closePicker"
-      >
-        <div class="card pop hero-picker" @click.stop>
-          <div class="flex items-center justify-between hero-picker__head">
-            <h3 class="hero-picker__title">Цаг захиалах</h3>
-            <button
-              type="button"
-              class="btn btn-quiet"
-              style="padding: 8px"
-              aria-label="Хаах"
-              @click="closePicker"
-            >
-              <UiIcon name="x" :size="18" />
-            </button>
-          </div>
-
-          <p class="kicker cool" style="margin-bottom: 12px">Өдөр сонгох</p>
-          <div v-if="availDays.length" class="hero-booking-days">
-            <button
-              v-for="day in availDays"
-              :key="day.iso"
-              type="button"
-              class="hero-booking-day"
-              :class="{ 'is-selected': bookDate?.iso === day.iso }"
-              @click="bookDate = day; bookSlot = null"
-            >
-              <span class="hero-booking-day__abbr">{{ day.d }}</span>
-              <span class="hero-booking-day__num">{{ day.n }}</span>
-            </button>
-          </div>
-          <p v-else class="muted" style="font-size: 13px; margin-bottom: 18px">Одоогоор боломжит цаг байхгүй байна.</p>
-
-          <p class="kicker cool" style="margin: 18px 0 12px">Боломжит цаг</p>
-          <div v-if="currentSlots.length" class="hero-booking-slots">
-            <button
-              v-for="slot in currentSlots"
-              :key="slot.id"
-              type="button"
-              class="hero-booking-slot"
-              :class="{ 'is-selected': bookSlot?.id === slot.id }"
-              @click="bookSlot = slot"
-            >
-              {{ slot.time }}
-            </button>
-          </div>
-          <p v-else-if="bookDate" class="muted" style="font-size: 13px; margin-bottom: 0">Энэ өдөрт боломжит цаг байхгүй.</p>
-
-          <div class="hero-picker__actions">
-            <button
-              type="button"
-              class="btn btn-ghost"
-              @click="closePicker"
-            >
-              Цуцлах
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              :disabled="!hasBooking"
-              @click="navigating = true; goEnrollPayment()"
-            >
-              Бүртгэлд орох
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </section>
 </template>
 
@@ -273,6 +116,55 @@ function onPrimaryClick() {
 
 .hero-actions {
   margin-top: 32px;
+}
+
+.hero-kicker {
+  margin-bottom: 16px;
+}
+
+.hero-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.hero-facts span,
+.hero-facts strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 76%, transparent);
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1;
+}
+
+.hero-facts strong {
+  border-color: color-mix(in srgb, var(--clay) 35%, var(--line));
+  background: var(--clay-tint);
+  color: var(--clay-deep);
+}
+
+.hero-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 480px;
+  margin-top: 18px;
+  color: var(--sage-deep);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.hero-note :deep(svg) {
+  flex: none;
+  margin-top: 2px;
 }
 
 .hero-metrics {
@@ -349,6 +241,72 @@ function onPrimaryClick() {
   border-radius: 16px;
 
   box-shadow: var(--sh-lg);
+}
+
+.hero-float-card--reading {
+  left: -8px;
+  top: 52px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 210px;
+}
+
+.hero-float-card--reading strong,
+.hero-float-card--subscription strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.hero-float-card--reading p,
+.hero-float-card--subscription small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.hero-float-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--clay-tint);
+  color: var(--clay-deep);
+}
+
+.hero-float-card__icon--blue {
+  background: var(--primary-tint);
+  color: var(--primary-deep);
+}
+
+.hero-float-card--subscription {
+  right: -10px;
+  bottom: 38px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 260px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.hero-float-card--subscription:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 26px 64px rgba(22, 49, 63, 0.18);
+}
+
+.hero-float-card--subscription > span:nth-child(2) {
+  flex: 1;
 }
 
 .hero-float-card--session {
@@ -587,6 +545,21 @@ function onPrimaryClick() {
     padding-bottom: 15px;
   }
 
+  .hero-facts {
+    margin-top: 20px;
+    gap: 8px;
+  }
+
+  .hero-facts span,
+  .hero-facts strong {
+    font-size: 12.5px;
+  }
+
+  .hero-note {
+    margin-top: 16px;
+    font-size: 13px;
+  }
+
   .hero-metrics {
     display: grid;
 
@@ -643,6 +616,22 @@ function onPrimaryClick() {
     max-height: 380px;
 
     margin: 0 auto;
+  }
+
+  .hero-float-card {
+    position: relative;
+    inset: auto;
+    z-index: 2;
+  }
+
+  .hero-float-card--reading {
+    width: calc(100% - 24px);
+    margin: -28px 12px 0;
+  }
+
+  .hero-float-card--subscription {
+    width: calc(100% - 24px);
+    margin: 10px 12px 0;
   }
 }
 

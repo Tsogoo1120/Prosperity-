@@ -14,35 +14,33 @@ import BookingModal from '@/components/landing/BookingModal.vue'
 
 const emit = defineEmits(['nav'])
 
-const { session, profile, loading, signOut, isSubscriber, hasReadingAccess } = useAuth()
-
-// Reading-pass holders (15,000₮) may enter, but only the Community area —
-// everything else stays subscriber-only.
-const readerOnly = computed(() => !isSubscriber() && hasReadingAccess())
+const { session, profile, loading, signOut, isAdmin, isSubscriber } = useAuth()
 
 watchEffect(() => {
   if (loading.value) return
   if (!session.value) {
     emit('nav', 'login')
-  } else if (profile.value && !isSubscriber() && !hasReadingAccess()) {
+  } else if (profile.value && !isSubscriber() && !isAdmin()) {
     emit('nav', 'enroll')
   }
 })
 
-const view = ref('dashboard')
-
-// Reading-pass users land straight on the collective reading, and any attempt
-// to open a locked view snaps back to community.
-watchEffect(() => {
-  if (readerOnly.value && view.value !== 'community') view.value = 'community'
-})
-
-// Locked sidebar item tapped by a reading-pass user → send them to the
-// subscription enroll flow with the right service preselected.
-function goUpgrade() {
-  sessionStorage.setItem('union-enroll-intent', JSON.stringify({ serviceId: 'subscription' }))
-  emit('nav', 'enroll')
+function takeStudentIntent() {
+  try {
+    const raw = sessionStorage.getItem('union-student-intent')
+    if (!raw) return null
+    sessionStorage.removeItem('union-student-intent')
+    return JSON.parse(raw)
+  } catch {
+    sessionStorage.removeItem('union-student-intent')
+    return null
+  }
 }
+
+const studentIntent = takeStudentIntent()
+const allowedViews = new Set(['dashboard', 'learn', 'assess', 'challenge', 'sessions', 'community'])
+const view = ref(allowedViews.has(studentIntent?.view) ? studentIntent.view : 'dashboard')
+
 const booking = ref(false)
 // Slot id to preselect inside the booking modal (set when the user taps a
 // specific available time in SessionsView).
@@ -52,7 +50,8 @@ function openBooking(slotId) {
   bookingSlotId.value = typeof slotId === 'string' ? slotId : null
   booking.value = true
 }
-const targetLesson = ref(null) // deep-link lesson id for LearnView (from dashboard card)
+const targetLesson = ref(studentIntent?.lessonId ?? null) // deep-link lesson id for LearnView
+const targetTest = ref(studentIntent?.testId ?? null)
 const { open: sidebarOpen, toggle: toggleSidebar, close: closeSidebar } = useSidebar()
 
 function setView(v) {
@@ -87,7 +86,7 @@ const titles = computed(() => ({
   assess: ['Assessments', 'Honest mirrors for where you are right now.'],
   challenge: ['31-Day Growth Challenge', 'A daily practice in becoming.'],
   sessions: ['My sessions', 'One-on-one mentorship and consultations.'],
-  community: ['Community', 'Choose your collective reading and share your journey.'],
+  community: ['Community', 'Share your journey with the community.'],
 }))
 const title = computed(() => (titles.value[view.value] || ['', null])[0])
 const sub = computed(() => (titles.value[view.value] || ['', null])[1])
@@ -105,8 +104,6 @@ async function handleLogout() {
       :view="view"
       :open="sidebarOpen"
       :user-name="userName"
-      :reader-only="readerOnly"
-      @upgrade="goUpgrade"
       @set-view="setView"
       @nav="emit('nav', $event)"
       @close="closeSidebar"
@@ -117,7 +114,7 @@ async function handleLogout() {
 
       <template v-else-if="view === 'assess'">
         <StudentTopbar :title="title" :sub="sub" @open-lesson="openLesson" @menu="toggleSidebar" />
-        <AssessmentsView />
+        <AssessmentsView :initial-test-id="targetTest" />
       </template>
 
       <template v-else-if="view === 'challenge'">

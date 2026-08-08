@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
             <div style="font-weight: 600; font-size: 14.5px">{{ v.title }}</div>
             <div class="muted" style="font-size: 12px; margin-top: 2px; display: flex; gap: 8px; align-items: center">
               <span>{{ v.slug }}</span>
-              <span v-if="v.video_r2_key_vertical" style="opacity: 0.6; font-size: 11px">9:16 ✓</span>
+              <span v-if="v.video_r2_key_vertical" style="opacity: 0.6; font-size: 11px">9:16</span>
             </div>
           </div>
 

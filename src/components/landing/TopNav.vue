@@ -14,9 +14,8 @@ const menuOpen = ref(false)
 let el = null
 
 const navLinks = [
-  { label: 'Courses', section: 'courses' },
-  { label: 'Introduction', section: 'intro' },
-  { label: 'Mentorship', section: 'mentor' },
+  { label: 'Хичээлүүд', section: 'courses' },
+  { label: 'Сул цагууд', section: 'mentor' },
 ]
 
 const onScroll = () => {
@@ -61,11 +60,11 @@ function onBook() {
     :class="{ 'landing-header--scrolled': scrolled, 'landing-header--menu-open': menuOpen }"
   >
     <div class="landing-header__bar mx-auto flex max-w-wrap items-center justify-between px-4 sm:px-8">
-      <button type="button" class="landing-logo-btn" aria-label="Scroll to top" @click="goToSection('hero')">
+      <button type="button" class="landing-logo-btn" aria-label="Нүүр хэсэг рүү очих" @click="goToSection('hero')">
         <UiLogo :size="21" />
       </button>
 
-      <nav class="hide-mobile landing-header__nav" aria-label="Main">
+      <nav class="hide-mobile landing-header__nav" aria-label="Үндсэн цэс">
         <button
           v-for="link in navLinks"
           :key="link.section"
@@ -78,14 +77,14 @@ function onBook() {
       </nav>
 
       <div class="hide-mobile flex items-center" style="gap: 12px">
-        <button class="btn btn-ghost btn-sm" @click="emit('nav', 'login')">Нэвтрэх</button>
-        <button class="btn btn-primary btn-sm" @click="emit('book')">Хувийн уншлага цаг захиалах</button>
+        <button class="btn btn-ghost btn-sm" @click="emit('nav', 'login')">Нэвтэрч орох</button>
+        <button class="btn btn-primary btn-sm" @click="emit('book')">Хувийн уншлага авах</button>
       </div>
 
       <button
         class="show-mobile-only menu-toggle"
         :aria-expanded="menuOpen"
-        :aria-label="menuOpen ? 'Close menu' : 'Open menu'"
+        :aria-label="menuOpen ? 'Цэс хаах' : 'Цэс нээх'"
         @click="menuOpen = !menuOpen"
       >
         <UiIcon :name="menuOpen ? 'x' : 'menu'" :size="20" />
@@ -93,7 +92,7 @@ function onBook() {
     </div>
 
     <div class="mobile-nav-panel" :class="{ 'mobile-nav-panel--open': menuOpen }" :aria-hidden="!menuOpen">
-      <nav class="mobile-nav-panel__inner" aria-label="Mobile">
+      <nav class="mobile-nav-panel__inner" aria-label="Гар утасны цэс">
         <button
           v-for="link in navLinks"
           :key="link.section"
@@ -104,8 +103,8 @@ function onBook() {
           {{ link.label }}
         </button>
         <div class="hr" style="margin: 12px 0" />
-        <button type="button" class="btn btn-ghost btn-block" @click="onNav('login')">Нэвтрэх</button>
-        <button type="button" class="btn btn-primary btn-block" @click="onBook">Book a consultation</button>
+        <button type="button" class="btn btn-ghost btn-block" @click="onNav('login')">Гишүүнээр нэвтрэх</button>
+        <button type="button" class="btn btn-primary btn-block" @click="onBook">Хувийн уншлага авах</button>
       </nav>
     </div>
   </header>

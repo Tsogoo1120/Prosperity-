@@ -23,12 +23,12 @@
     --sage-deep: #51736a;
     --sage-tint: #e7efea;
 
-    --clay: #bd7350; /* warm accent — CTAs, highlights */
-    --clay-deep: #a35e3d;
-    --clay-tint: #f5e6dc;
+    --clay: #4f7fa8; /* ocean blue accent — CTAs, selections, highlights */
+    --clay-deep: #376589;
+    --clay-tint: #e5eef6;
 
-    --gold: #c79a45; /* streaks / achievement */
-    --gold-tint: #f6ecd4;
+    --gold: #4f8790; /* cool secondary accent — streaks / achievement */
+    --gold-tint: #dfedef;
 
     --surface: #ecf2ef;
     --surface-2: #e3ebe7;
@@ -84,12 +84,12 @@
     --sage-deep: #a7c6b9;
     --sage-tint: #233530;
 
-    --clay: #d68f6b;
-    --clay-deep: #e0a282;
-    --clay-tint: #3a2a20;
+    --clay: #4f7fa8;
+    --clay-deep: #8db5d2;
+    --clay-tint: #21394c;
 
-    --gold: #d9b85f;
-    --gold-tint: #352d18;
+    --gold: #78aeb5;
+    --gold-tint: #1f373c;
 
     --surface: #11242d;
     --surface-2: #16303b;
@@ -312,7 +312,7 @@
   }
   .chip.gold {
     background: var(--gold-tint);
-    color: #97732a;
+    color: var(--gold);
     border-color: transparent;
   }
   .chip.good {
@@ -525,7 +525,7 @@
     height: min(50vw, 420px);
     right: 18%;
     bottom: 8%;
-    background: radial-gradient(circle at 50% 50%, rgba(189, 115, 80, 0.22), transparent 72%);
+    background: radial-gradient(circle at 50% 50%, rgba(79, 127, 168, 0.24), transparent 72%);
   }
 
   .landing-atmosphere__blob--d {
@@ -577,7 +577,7 @@
     height: 300px;
     right: 30%;
     bottom: -120px;
-    background: radial-gradient(circle at 50% 50%, rgba(189, 115, 80, 0.12), transparent 66%);
+    background: radial-gradient(circle at 50% 50%, rgba(79, 127, 168, 0.15), transparent 66%);
   }
 
   .calm-field__blob--sage-mid,
@@ -599,7 +599,7 @@
   }
 
   :root:not([data-theme='dark']) .calm-field--intense .calm-field__blob--clay {
-    background: radial-gradient(circle at 50% 50%, rgba(189, 115, 80, 0.28), transparent 62%);
+    background: radial-gradient(circle at 50% 50%, rgba(79, 127, 168, 0.3), transparent 62%);
   }
 
   :root:not([data-theme='dark']) .calm-field--intense .calm-field__blob--sage-mid,
@@ -630,7 +630,7 @@
     height: 280px;
     left: 12%;
     top: 8%;
-    background: radial-gradient(circle at 50% 50%, rgba(199, 154, 69, 0.18), transparent 70%);
+    background: radial-gradient(circle at 50% 50%, rgba(79, 135, 144, 0.18), transparent 70%);
   }
 }
 

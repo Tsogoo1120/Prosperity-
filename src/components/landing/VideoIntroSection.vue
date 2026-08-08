@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { introVideo } from '@/data/union.js'
+import { introVideo, services } from '@/data/union.js'
 import UiIcon from '@/components/common/UiIcon.vue'
 import { supabase } from '@/lib/supabase.js'
 import { getIntroVideoPublicUrl, getStreamIframeUrl, getR2VideoUrl } from '@/lib/videoUpload.js'
 
 const emit = defineEmits(['nav'])
+const subscription = services.find((service) => service.id === 'subscription')
 
 const commercialVideo = ref(null)     // legacy direct URL (Supabase Storage)
 const introStreamUid = ref(null)      // Cloudflare Stream uid
@@ -62,11 +63,11 @@ function goEnrollSubscription() {
         </ul>
         <div class="flex flex-wrap items-center btn-row--stack-mobile" style="gap: 16px">
           <button class="btn btn-primary btn-lg" @click="goEnrollSubscription">
-            <UiIcon name="calendar" :size="18" /> subscription авах
+            <UiIcon name="book" :size="18" /> Subscription авах · {{ subscription?.priceDisplay }}/сар
           </button>
           <span class="muted flex items-center" style="gap: 8px; font-size: 14px">
             <UiIcon name="clock" :size="16" />
-            {{ introVideo.duration }} watch
+            {{ introVideo.duration }} танилцуулга
           </span>
         </div>
       </div>

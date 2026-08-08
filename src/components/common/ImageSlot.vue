@@ -14,7 +14,7 @@ const props = defineProps({
   shape: { type: String, default: 'rounded' }, // rounded | circle | pill | rect
   radius: { type: Number, default: 12 },
   fit: { type: String, default: 'cover' }, // cover | contain | fill
-  placeholder: { type: String, default: 'Drop an image' },
+  placeholder: { type: String, default: 'Зургаа энд оруулаарай' },
   src: { type: String, default: '' },
 })
 
@@ -37,7 +37,7 @@ const borderRadius = computed(() => {
 function ingest(file) {
   error.value = ''
   if (!file || ACCEPT.indexOf(file.type) < 0) {
-    error.value = 'Drop a PNG, JPEG, WebP, or AVIF image.'
+    error.value = 'PNG, JPEG, WebP эсвэл AVIF зураг сонгоорой.'
     return
   }
   if (url.value && url.value.startsWith('blob:')) URL.revokeObjectURL(url.value)
@@ -107,7 +107,7 @@ function clear() {
     >
       <UiIcon name="eye" :size="26" :style="{ opacity: 0.45 }" />
       <span class="max-w-[90%] text-[13px] font-medium leading-snug">{{ placeholder }}</span>
-      <span class="text-[11px]">or <u>browse files</u></span>
+      <span class="text-[11px]">эсвэл <u>дарж сонгох</u></span>
     </button>
 
     <div
